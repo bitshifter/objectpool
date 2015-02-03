@@ -2,7 +2,7 @@ CC=g++
 CFLAGS=-g -c -Wall -Wextra -Werror
 CXXFLAGS=-std=c++14
 LDFLAGS=
-SOURCES=src/test.cpp src/memory_pool.cpp
+SOURCES=src/main.cpp src/test.cpp src/memory_pool.cpp
 OBJECTS=$(SOURCES:.cpp=.o)
 EXECUTABLE=test
 

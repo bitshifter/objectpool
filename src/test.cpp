@@ -1,60 +1,50 @@
 #include "memory_pool.h"
 
-#include <cassert>
+#include "catch.hpp"
 
-namespace
+inline bool is_aligned(const void * ptr, size_t align)
 {
-
-void test1()
-{
-	MemoryPoolBase mp(sizeof(uint32_t));
-	uint32_t * p = reinterpret_cast<uint32_t *>(mp.allocate());
-	assert(p);
-	*p = 0xaabbccdd;
-	mp.deallocate(p);
+	return (reinterpret_cast<uintptr_t>(ptr) & (align - 1)) == 0;
 }
 
-
-void test2()
+TEST_CASE("Single new and delete", "[memory_pool]")
 {
-	MemoryPoolBase mp(sizeof(uint32_t));
-	uint32_t * p1 = reinterpret_cast<uint32_t *>(mp.allocate());
-	assert(p1);
-	*p1 = 0x11223344;
-	uint32_t * p2 = reinterpret_cast<uint32_t *>(mp.allocate());
-	assert(p2);
-	*p2 = 0x55667788;
-	assert(*p1 == 0x11223344);
-	mp.deallocate(p1);
-	assert(*p2 == 0x55667788);
-	mp.deallocate(p2);
+	MemoryPool<uint32_t> mp;
+	uint32_t * p = mp.new_object(0xaabbccdd);
+	REQUIRE(p != nullptr);
+	CHECK(is_aligned(p, 4));
+	CHECK(*p == 0xaabbccdd);
+	mp.delete_object(p);
 }
 
-
-void test3()
+TEST_CASE("Double new and delete", "[memory_pool]")
 {
-	MemoryPoolBase mp(sizeof(uint32_t));
+	MemoryPool<uint32_t> mp;
+	uint32_t * p1 = mp.new_object(0x11223344);
+	REQUIRE(p1 != nullptr);
+	CHECK(is_aligned(p1, 4));
+	uint32_t * p2 = mp.new_object(0x55667788);
+	REQUIRE(p2 != nullptr);
+	CHECK(is_aligned(p2, 4));
+	CHECK(*p1 == 0x11223344);
+	mp.delete_object(p1);
+	CHECK(*p2 == 0x55667788);
+	mp.delete_object(p2);
+}
+
+TEST_CASE("Block fill and free", "[memory_pool]")
+{
+	MemoryPool<uint32_t> mp;
 	std::vector<uint32_t *> v;
 	for (size_t i = 0; i < 64; ++i)
 	{
-		uint32_t * p = reinterpret_cast<uint32_t *>(mp.allocate());
-		*p = 1 << i;
+		uint32_t * p = mp.new_object(1 << i);
+		REQUIRE(p != nullptr);
+		CHECK(*p == 1 << i);
 		v.push_back(p);
 	}
-
 	for (auto p : v)
 	{
-		mp.deallocate(p);
+		mp.delete_object(p);
 	}
 }
-
-} // anonymous namespace
-
-int main()
-{
-	test1();
-	test2();
-	test3();
-	return 0;
-}
-
