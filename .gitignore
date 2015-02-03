@@ -2,4 +2,5 @@
 *.pyc
 *.swp
 /test
+/test.exe
 Session.vim
