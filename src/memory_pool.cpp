@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <limits>
+#include <memory>
 
 namespace {
 	const size_t POOL_ENTRIES = sizeof(uint32_t) * 8;
@@ -10,14 +11,23 @@ namespace {
 	
 	inline uint8_t * malloc_block(size_t block_size)
 	{
+#if defined( _WIN32 )
+		return reinterpret_cast<uint8_t*>(
+				_aligned_malloc(block_size, CACHE_ALIGN * sizeof(void*)));
+#else
 		void * ptr;
 		posix_memalign(&ptr, CACHE_ALIGN, block_size);
 		return reinterpret_cast<uint8_t *>(ptr);
+#endif
 	}
 
 	inline void free_block(uint8_t * ptr)
 	{
+#if defined( _WIN32 )
+		_aligned_free(ptr);
+#else
 		std::free(ptr);
+#endif
 	}
 }
 
