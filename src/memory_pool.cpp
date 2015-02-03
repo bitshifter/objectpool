@@ -7,13 +7,13 @@
 
 namespace {
 	const size_t POOL_ENTRIES = sizeof(uint32_t) * 8;
-	const size_t CACHE_ALIGN = 64 / sizeof(void*);
+	const size_t CACHE_ALIGN = 64;
 	
 	inline uint8_t * malloc_block(size_t block_size)
 	{
 #if defined( _WIN32 )
 		return reinterpret_cast<uint8_t*>(
-				_aligned_malloc(block_size, CACHE_ALIGN * sizeof(void*)));
+				_aligned_malloc(block_size, CACHE_ALIGN));
 #else
 		void * ptr;
 		posix_memalign(&ptr, CACHE_ALIGN, block_size);
