@@ -6,17 +6,15 @@
 #include <memory>
 
 namespace {
-	const size_t POOL_ENTRIES = sizeof(uint32_t) * 8;
-	const size_t CACHE_ALIGN = 64;
 	
-	inline uint8_t * malloc_block(size_t block_size)
+	inline uint8_t * malloc_block(size_t block_size, size_t alignment)
 	{
 #if defined( _WIN32 )
 		return reinterpret_cast<uint8_t*>(
-				_aligned_malloc(block_size, CACHE_ALIGN));
+				_aligned_malloc(block_size, alignment));
 #else
 		void * ptr;
-		posix_memalign(&ptr, CACHE_ALIGN, block_size);
+		posix_memalign(&ptr, alignment, block_size);
 		return reinterpret_cast<uint8_t *>(ptr);
 #endif
 	}
@@ -32,7 +30,8 @@ namespace {
 }
 
 MemoryPoolBase::MemoryPoolBase(uint32_t entry_size) :
-	stride_(entry_size)
+	stride_(entry_size),
+	generation_(0)
 {
 }
 
@@ -52,6 +51,8 @@ MemoryPoolBase::~MemoryPoolBase()
 
 void * MemoryPoolBase::allocate()
 {
+	increment_generation();
+
 	// find a block with space
 	size_t free_block = 0;
 	for (const auto block_mask : block_masks_)
@@ -63,7 +64,8 @@ void * MemoryPoolBase::allocate()
 	// if no free space, allocate a new block and return first entry
 	if (free_block == block_masks_.size())
 	{
-		uint8_t * new_block = malloc_block(POOL_ENTRIES * stride_);
+		uint8_t * new_block = malloc_block(NUM_BLOCK_ENTRIES * stride_,
+				MIN_BLOCK_ALIGN);
 		blocks_.push_back(new_block);
 		block_masks_.push_back(0x1);
 		return new_block;
@@ -72,7 +74,7 @@ void * MemoryPoolBase::allocate()
 	// find free entry in the block
 	uint32_t block_mask = block_masks_[free_block];
 	// TODO: could probably do some bit magic here
-	for (size_t i = 0; i < POOL_ENTRIES; ++i)
+	for (size_t i = 0; i < NUM_BLOCK_ENTRIES; ++i)
 	{
 		uint32_t bit = 1 << i;
 		if ((block_mask & bit) == 0)
@@ -91,7 +93,9 @@ void * MemoryPoolBase::allocate()
 
 void MemoryPoolBase::deallocate(void * ptr)
 {
-	const size_t block_size = POOL_ENTRIES * stride_;
+	increment_generation();
+
+	const size_t block_size = NUM_BLOCK_ENTRIES * stride_;
 	uint8_t ** blocks = blocks_.data();
 	mask_t * block_masks = block_masks_.data();
 	assert(blocks_.size() == block_masks_.size());
@@ -122,3 +126,64 @@ void MemoryPoolBase::deallocate(void * ptr)
 
 	assert(false && "failed to deallocate entry");
 }
+
+
+uint8_t * MemoryPoolBase::element_at(size_t index)
+{
+	const size_t block_index = index / NUM_BLOCK_ENTRIES;
+	const size_t bit_index = index - (block_index * NUM_BLOCK_ENTRIES);
+	assert(block_index < block_masks_.size());
+	assert(bit_index < NUM_BLOCK_ENTRIES);
+	assert(block_masks_[block_index] & (1 << bit_index));
+	return blocks_[block_index] + bit_index * stride_;
+}
+
+const uint8_t * MemoryPoolBase::element_at(size_t index) const
+{
+	return const_cast<MemoryPoolBase *>(this)->element_at(index);
+}
+
+size_t MemoryPoolBase::next_index(size_t index) const
+{
+	const size_t block_count = block_masks_.size();
+	size_t block_index = index / NUM_BLOCK_ENTRIES;
+	size_t bit_index = index - (block_index * NUM_BLOCK_ENTRIES);
+	assert(bit_index < NUM_BLOCK_ENTRIES);
+	while (block_index < block_count)
+	{
+		// found a valid entry
+		if (block_masks_[block_index] & (1 << bit_index))
+		{
+			return (block_index * NUM_BLOCK_ENTRIES) + bit_index;
+		}
+		++bit_index;
+		if (bit_index == NUM_BLOCK_ENTRIES)
+		{
+			++block_index;
+		}
+	}
+	// past the last block
+	return block_count * NUM_BLOCK_ENTRIES;
+}
+
+size_t MemoryPoolBase::end_index() const
+{
+	return block_masks_.size() * NUM_BLOCK_ENTRIES;
+}
+
+uint32_t MemoryPoolBase::generation() const
+{
+	return generation_;
+}
+
+void MemoryPoolBase::increment_generation()
+{
+	uint32_t generation = generation_ + 1;
+	generation_ = generation == INVALID_GENERATION ? 0 : generation;
+}
+
+bool MemoryPoolBase::check_generation(uint32_t generation) const
+{
+	return generation_ == generation;
+}
+
