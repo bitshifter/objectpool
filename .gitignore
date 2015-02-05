@@ -1,6 +1,7 @@
 *.o
 *.pyc
 *.swp
+/build/
 /test
 /test.exe
 Session.vim
