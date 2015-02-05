@@ -27,6 +27,15 @@ namespace {
 		std::free(ptr);
 #endif
 	}
+
+	/// Returns the next unused bit index
+	template <typename T>
+	inline T find_slot(T n)
+	{
+		// create a word with a single 1-bit at the position of the rightmost
+		// 0-bit in x, producing 0 if none, then count the trailing zeros.
+		return __builtin_ctz(~n & (n + 1));
+	}
 }
 
 MemoryPoolBase::MemoryPoolBase(uint32_t entry_size) :
@@ -57,6 +66,7 @@ void * MemoryPoolBase::allocate()
 	size_t free_block = 0;
 	for (const auto block_mask : block_masks_)
 	{
+		// found a block that isn't full so break
 		if (block_mask != ~0u) break;
 		++free_block;
 	}
@@ -73,22 +83,15 @@ void * MemoryPoolBase::allocate()
 
 	// find free entry in the block
 	uint32_t block_mask = block_masks_[free_block];
-	// TODO: could probably do some bit magic here
-	for (size_t i = 0; i < NUM_BLOCK_ENTRIES; ++i)
-	{
-		uint32_t bit = 1 << i;
-		if ((block_mask & bit) == 0)
-		{
-			uint8_t * ptr = blocks_[free_block] + stride_ * i;
-			block_masks_[free_block] = block_mask | bit;
-			return ptr;
-		}
-	}
-	
-	assert(false && "failed to allocate entry");
+	uint32_t slot = find_slot(block_mask);
 
-	// if we got here then something bad happened
-	return nullptr;
+	assert(slot < NUM_BLOCK_ENTRIES);
+	assert((block_mask & (1 << slot)) == 0);
+
+	uint8_t * ptr = blocks_[free_block] + stride_ * slot;
+	block_masks_[free_block] = block_mask | (1 << slot);
+
+	return ptr;
 }
 
 void MemoryPoolBase::deallocate(void * ptr)
