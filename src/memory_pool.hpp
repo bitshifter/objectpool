@@ -6,6 +6,12 @@
 #include <memory>
 #include <vector>
 
+struct MemoryPoolStats
+{
+	size_t block_count = 0;
+	size_t allocation_count = 0;
+};
+
 class MemoryPoolBase
 {
 	typedef uint32_t mask_t;
@@ -14,10 +20,11 @@ class MemoryPoolBase
 	const uint32_t stride_;
 	uint32_t generation_;
 	static const size_t NUM_BLOCK_ENTRIES = sizeof(mask_t) * 8;
-	const size_t MIN_BLOCK_ALIGN = 64;
 
 public:
 	static const uint32_t INVALID_GENERATION = ~0u;
+
+	MemoryPoolStats get_stats() const;
 
 protected:
 	MemoryPoolBase(uint32_t entry_size);
@@ -49,7 +56,7 @@ private:
 };
 
 template <typename T>
-class MemoryPool : MemoryPoolBase
+class MemoryPool : public MemoryPoolBase
 {
 public:
 	MemoryPool() : MemoryPoolBase(sizeof(T)) {}
@@ -94,7 +101,8 @@ public:
 		const_iterator(const MemoryPool<T> * pool, size_t index) :
 			pool_(pool), index_(index), generation_(pool_->generation()) {}
 	public:
-		const_iterator() : pool_(nullptr), index_(0), generation_(MemoryPool<T>::INVALID_GENERATION)  {}
+		const_iterator() : pool_(nullptr), index_(0),
+			generation_(MemoryPool<T>::INVALID_GENERATION)  {}
 		bool operator!=(const const_iterator & itr) const
 		{
 			return !(pool_ == itr.pool_ && index_ == itr.index_);

@@ -7,6 +7,8 @@
 
 namespace {
 	
+	const size_t MIN_BLOCK_ALIGN = 64;
+
 	inline uint8_t * malloc_block(size_t block_size, size_t alignment)
 	{
 #if defined( _WIN32 )
@@ -37,6 +39,14 @@ namespace {
 		return __builtin_ctz(~n & (n + 1));
 	}
 
+
+	/// Returns the number of allocations in the given mask
+	template <typename T>
+	inline T allocation_count(T n)
+	{
+		return __builtin_popcount(n);
+	}
+
 	/// Returns true if the pointer is of the given alignment
 	inline bool is_aligned(const void * ptr, size_t align)
 	{
@@ -62,6 +72,18 @@ MemoryPoolBase::~MemoryPoolBase()
 	{
 		free_block(block);
 	}
+}
+
+MemoryPoolStats MemoryPoolBase::get_stats() const
+{
+	MemoryPoolStats stats;
+	stats.block_count = block_masks_.size();
+	stats.allocation_count = 0;
+	for (const auto block_mask : block_masks_)
+	{
+		stats.allocation_count += allocation_count(block_mask);
+	}
+	return stats;
 }
 
 void * MemoryPoolBase::allocate()
@@ -208,6 +230,8 @@ TEST_CASE("Single new and delete", "[allocation]")
 	uint32_t * p = mp.new_object(0xaabbccdd);
 	REQUIRE(p != nullptr);
 	CHECK(is_aligned(p, 4));
+	// should be aligned to the cache line size
+	CHECK(is_aligned(p, MIN_BLOCK_ALIGN));
 	CHECK(*p == 0xaabbccdd);
 	mp.delete_object(p);
 }
@@ -221,6 +245,7 @@ TEST_CASE("Double new and delete", "[allocation]")
 	uint32_t * p2 = mp.new_object(0x55667788);
 	REQUIRE(p2 != nullptr);
 	CHECK(is_aligned(p2, 4));
+	CHECK(p2 == p1 + 1);
 	CHECK(*p1 == 0x11223344);
 	mp.delete_object(p1);
 	CHECK(*p2 == 0x55667788);
@@ -248,21 +273,86 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 {
 	MemoryPool<uint32_t> mp;
 	std::vector<uint32_t *> v;
-	for (size_t i = 0; i < 64; ++i)
+	size_t i;
+	for (i = 0; i < 64; ++i)
 	{
 		uint32_t * p = mp.new_object(1 << i);
 		REQUIRE(p != nullptr);
 		CHECK(*p == 1 << i);
 		v.push_back(p);
 	}
-	size_t index = 0;
+
+	{
+		auto stats = mp.get_stats();
+		CHECK(stats.allocation_count == 64);
+		CHECK(stats.block_count == 2);
+	}
+
+	// check values
+	i = 0;
 	for (auto itr = mp.begin(), end = mp.end(); itr != end; ++itr)
 	{
-		CHECK(*itr == 1 << index);
-		++index;
+		CHECK(*itr == 1 << i);
+		++i;
 	}
+
+	// delete every second entry
+	for (i = 1; i < 64; i += 2)
+	{
+		uint32_t * p = v[i];
+		v[i] = nullptr;
+		mp.delete_object(p);
+	}
+
+	{
+		auto stats = mp.get_stats();
+		CHECK(stats.allocation_count == 32);
+		CHECK(stats.block_count == 2);
+	}
+
+	// check remaining objects
+	i = 0;
+	for (auto itr = mp.begin(), end = mp.end(); itr != end; ++itr)
+	{
+		CHECK(*itr == 1 << i);
+		i += 2;
+	}
+
+	// allocate 16 new entries (fill first block)
+    for (i = 1; i < 32; i += 2)
+	{
+		CHECK(v[i] == nullptr);
+        v[i] = mp.new_object(1 << i);
+	}
+
+	{
+		auto stats = mp.get_stats();
+		CHECK(stats.allocation_count == 48);
+		CHECK(stats.block_count == 2);
+	}
+
+	// delete objects in second block
+	for (i = 32; i < 64; ++i)
+	{
+		uint32_t * p = v[i];
+		v[i] = nullptr;
+		mp.delete_object(p);
+	}
+
+	{
+		auto stats = mp.get_stats();
+		CHECK(stats.allocation_count == 32);
+		CHECK(stats.block_count == 2);
+	}
+
 	for (auto p : v)
 	{
 		mp.delete_object(p);
+	}
+
+	{
+		auto stats = mp.get_stats();
+		CHECK(stats.allocation_count == 0);
+		CHECK(stats.block_count == 2);
 	}
 }
