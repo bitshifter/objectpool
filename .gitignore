@@ -1,6 +1,7 @@
 *.o
 *.pyc
 *.swp
+CMakeLists.txt.user
 /build/
 /test
 /test.exe
