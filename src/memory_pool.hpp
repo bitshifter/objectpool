@@ -18,6 +18,7 @@ class MemoryPoolBase
 	std::vector<mask_t> block_masks_;
 	std::vector<uint8_t *> blocks_;
 	const uint32_t stride_;
+	uint32_t free_block_;
 	uint32_t generation_;
 	static const size_t NUM_BLOCK_ENTRIES = sizeof(mask_t) * 8;
 
