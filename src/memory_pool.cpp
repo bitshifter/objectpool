@@ -312,8 +312,8 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 
 	{
 		auto stats = mp.get_stats();
-		CHECK(stats.allocation_count == 64);
-		CHECK(stats.block_count == 2);
+		CHECK(stats.allocation_count == 64u);
+		CHECK(stats.block_count == 2u);
 	}
 
 	// check values
@@ -335,8 +335,8 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	// check allocation count is reduced but block count is the same
 	{
 		auto stats = mp.get_stats();
-		CHECK(stats.allocation_count == 32);
-		CHECK(stats.block_count == 2);
+		CHECK(stats.allocation_count == 32u);
+		CHECK(stats.block_count == 2u);
 	}
 
 	// check remaining objects
@@ -357,8 +357,8 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	// check allocation and block count
 	{
 		auto stats = mp.get_stats();
-		CHECK(stats.allocation_count == 48);
-		CHECK(stats.block_count == 2);
+		CHECK(stats.allocation_count == 48u);
+		CHECK(stats.block_count == 2u);
 	}
 
 	// delete objects in second block
@@ -372,8 +372,8 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	// check that the empty block was freed
 	{
 		auto stats = mp.get_stats();
-		CHECK(stats.allocation_count == 32);
-		CHECK(stats.block_count == 1);
+		CHECK(stats.allocation_count == 32u);
+		CHECK(stats.block_count == 1u);
 	}
 
 	for (auto p : v)
@@ -383,7 +383,7 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 
 	{
 		auto stats = mp.get_stats();
-		CHECK(stats.allocation_count == 0);
-		CHECK(stats.block_count == 0);
+		CHECK(stats.allocation_count == 0u);
+		CHECK(stats.block_count == 0u);
 	}
 }
