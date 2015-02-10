@@ -1,5 +1,6 @@
 #include "memory_pool.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <limits>
@@ -31,20 +32,29 @@ namespace {
 	}
 
 	/// Returns the next unused bit index
-	template <typename T>
-	inline T find_slot(T n)
+	inline uint32_t find_slot(uint32_t n)
 	{
 		// create a word with a single 1-bit at the position of the rightmost
 		// 0-bit in x, producing 0 if none, then count the trailing zeros.
-		return __builtin_ctz(~n & (n + 1));
+		uint32_t m = ~n & (n + 1);
+#if _MSC_VER
+		unsigned long i;
+		_BitScanForward(&i, m);
+		return i;
+#else
+		return __builtin_ctz(m);
+#endif
 	}
 
 
 	/// Returns the number of allocations in the given mask
-	template <typename T>
-	inline T allocation_count(T n)
+	inline uint32_t allocation_count(uint32_t n)
 	{
+#if _MSC_VER
+		return __popcnt(n);
+#else
 		return __builtin_popcount(n);
+#endif
 	}
 
 	/// Returns true if the pointer is of the given alignment
@@ -288,7 +298,7 @@ TEST_CASE("Block fill and free", "[allocation]")
 	{
 		uint32_t * p = mp.new_object(1 << i);
 		REQUIRE(p != nullptr);
-		CHECK(*p == 1 << i);
+		CHECK(*p == 1u << i);
 		v.push_back(p);
 	}
 	for (auto p : v)
@@ -306,7 +316,7 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	{
 		uint32_t * p = mp.new_object(1 << i);
 		REQUIRE(p != nullptr);
-		CHECK(*p == 1 << i);
+		CHECK(*p == 1u << i);
 		v.push_back(p);
 	}
 
@@ -320,7 +330,7 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	i = 0;
 	for (auto itr = mp.begin(), end = mp.end(); itr != end; ++itr)
 	{
-		CHECK(*itr == 1 << i);
+		CHECK(*itr == 1u << i);
 		++i;
 	}
 
@@ -343,7 +353,7 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	i = 0;
 	for (auto itr = mp.begin(), end = mp.end(); itr != end; ++itr)
 	{
-		CHECK(*itr == 1 << i);
+		CHECK(*itr == 1u << i);
 		i += 2;
 	}
 

@@ -1,17 +1,21 @@
-cmake_minimum_required(VERSION 2.8.12)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12)
 
-project(memorypool)
+PROJECT(memorypool)
 
-add_compile_options(-g -std=c++11 -Wall -Wextra -Werror)
+IF(MSVC)
+	ADD_COMPILE_OPTIONS(-Zi -W4 -WX)
+ELSE()
+	ADD_COMPILE_OPTIONS(-g -std=c++11 -Wall -Wextra -Werror)
+ENDIF()
 
-set(CPPSRCS
+SET(CPPSRCS
 	src/main.cpp
 	src/memory_pool.cpp
 	)
 
-set(CPPHDRS
+SET(CPPHDRS
 	src/catch.hpp
 	src/memory_pool.hpp
 	)
 
-add_executable(runtests ${CPPHDRS} ${CPPSRCS})
+ADD_EXECUTABLE(runtests ${CPPHDRS} ${CPPSRCS})
