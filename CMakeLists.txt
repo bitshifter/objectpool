@@ -13,13 +13,14 @@ ELSE()
 ENDIF()
 
 SET(CPPSRCS
-	src/main.cpp
 	src/memory_pool.cpp
 	)
 
 SET(CPPHDRS
-	src/catch.hpp
 	src/memory_pool.hpp
 	)
 
-ADD_EXECUTABLE(runtests ${CPPHDRS} ${CPPSRCS})
+ADD_EXECUTABLE(runtests ${CPPHDRS} ${CPPSRCS} src/catch.hpp src/test.cpp)
+TARGET_COMPILE_DEFINITIONS(runtests INTERFACE -DUNIT_TESTS)
+ADD_EXECUTABLE(runbench ${CPPHDRS} ${CPPSRCS} src/bench.cpp)
+TARGET_COMPILE_DEFINITIONS(runbench INTERFACE -DBENCHMARKS)

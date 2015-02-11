@@ -260,6 +260,8 @@ bool MemoryPoolBase::check_generation(uint32_t generation) const
 // Tests
 //
 
+#if UNIT_TESTS
+
 #include "catch.hpp"
 
 TEST_CASE("Single new and delete", "[allocation]")
@@ -397,3 +399,6 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 		CHECK(stats.block_count == 0u);
 	}
 }
+
+#endif // UNIT_TESTS
+
