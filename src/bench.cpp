@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <chrono>
 #include <cinttypes>
 #include <iostream>
+
+namespace stats
+{
 
 // Helper function: extract a value representing the `pct` percentile of a sorted sample-set, using
 // linear interpolation. If samples are not sorted, return nonsensical value.
@@ -114,6 +118,13 @@ private:
     }
 };
 
+} // namespace stats
+
+namespace bench
+{
+
+using BenchFunc = void (*)(class Bencher &);
+
 class Bencher
 {
     uint64_t iterations_ = 0;
@@ -132,8 +143,7 @@ public:
             return std::chrono::nanoseconds::zero();
         }
     }
-    template <typename F>
-    void bench_n(uint64_t iterations, F func)
+    void bench_n(uint64_t iterations, BenchFunc func)
     {
         iterations_ = iterations;
         duration_ = std::chrono::nanoseconds::zero();
@@ -144,8 +154,7 @@ public:
         }
         duration_ = std::chrono::high_resolution_clock::now() - loop_start;
     }
-    template <typename F>
-    Summary<double> auto_bench(F func)
+    stats::Summary<double> auto_bench(BenchFunc func)
     {
         // initial bench run to get ballpark figure.
         uint64_t n = 1;
@@ -172,8 +181,8 @@ public:
         std::chrono::nanoseconds total_run;
         std::vector<double> samples(50);
 
-        Summary<double> summ;
-        Summary<double> summ5;
+        stats::Summary<double> summ;
+        stats::Summary<double> summ5;
         for (;;)
         {
 			auto loop_start = std::chrono::high_resolution_clock::now();
@@ -183,8 +192,8 @@ public:
                 p = ns_per_iter().count();
             }
 
-            winsorize(samples, 5.0);
-            summ = Summary<double>(samples);
+            stats::winsorize(samples, 5.0);
+            summ = stats::Summary<double>(samples);
 
             for (auto & p : samples)
             {
@@ -192,8 +201,8 @@ public:
                 p = ns_per_iter().count();
             }
 
-            winsorize(samples, 5.0);
-            summ5 = Summary<double>(samples);
+            stats::winsorize(samples, 5.0);
+            summ5 = stats::Summary<double>(samples);
 
             // If we've run for 100ms and seem to have converged to a
             // stable median.
@@ -218,7 +227,7 @@ public:
 
 struct BenchSamples
 {
-    Summary<double> ns_iter_summ;
+    stats::Summary<double> ns_iter_summ;
     uint64_t mb_s = 0;
 };
 
@@ -228,7 +237,7 @@ std::string fmt_bench_samples(const BenchSamples & bs)
     if (bs.mb_s)
     {
         snprintf(buffer, sizeof(buffer),
-            "%9" PRId64 " ns/iter (+/- %" PRId64 ") = %" PRIu64 " MB/s\n",
+            "%9" PRId64 " ns/iter (+/- %" PRId64 ") = %" PRIu64 " MB/s",
             static_cast<int64_t>(bs.ns_iter_summ.median),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min),
             bs.mb_s);
@@ -236,15 +245,14 @@ std::string fmt_bench_samples(const BenchSamples & bs)
     else
     {
         snprintf(buffer, sizeof(buffer),
-            "%9" PRId64 " ns/iter (+/- %" PRId64 ")\n",
+            "%9" PRId64 " ns/iter (+/- %" PRId64 ")",
             static_cast<int64_t>(bs.ns_iter_summ.median),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min));
     }
     return buffer;
 }
 
-template <typename F>
-BenchSamples benchmark(F f)
+BenchSamples benchmark(BenchFunc f)
 {
     BenchSamples bs;
     Bencher b;
@@ -258,19 +266,53 @@ BenchSamples benchmark(F f)
     return bs;
 }
 
+struct TestDescription
+{
+	TestDescription(BenchFunc func, const char * desc) :
+		func(func), desc(desc) {}
+	BenchFunc func;
+	const char * desc;
+	const char * tag;
+};
+
+} // namespace bench
+
+int run_tests_console(const std::vector<bench::TestDescription> & tests)
+{
+	int max_desc_len = 20;
+	for (const auto & test : tests)
+	{
+		max_desc_len = std::max<int>(strlen(test.desc), max_desc_len);
+	}
+	for (const auto & test : tests)
+	{
+        bench::BenchSamples bs = bench::benchmark(test.func);
+        printf("%-*s %s\n", max_desc_len, test.desc,
+                bench::fmt_bench_samples(bs).c_str());
+	}
+	return 0;
+}
+
 uint64_t factorial(uint64_t n)
 {
     return n > 0 ? factorial(n - 1) * n : 1;
 }
 
-void SimpleBench(Bencher &)
+void fib_100(bench::Bencher &)
 {
     factorial(100);
 }
 
+void fib_1000(bench::Bencher &)
+{
+    factorial(1000);
+}
+
 int main()
 {
-    BenchSamples bs = benchmark(SimpleBench);
-    std::cout << fmt_bench_samples(bs) << std::endl;
-    return 0;
+	std::vector<bench::TestDescription> tests;
+	tests.emplace_back(fib_100, "fib_100");
+	tests.emplace_back(fib_1000, "fib_1000");
+	return run_tests_console(tests);
 }
+
