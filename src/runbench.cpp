@@ -6,7 +6,7 @@ uint64_t factorial(uint64_t n)
     return n > 0 ? factorial(n - 1) * n : 1;
 }
 
-BENCH_TEST_BYTES(factorial_100)
+BENCH_TEST(factorial_100)
 {
     factorial(100);
 }
