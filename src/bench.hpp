@@ -1,5 +1,3 @@
-#include "memory_pool.hpp"
-
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -123,15 +121,13 @@ private:
 namespace bench
 {
 
-using BenchFunc = void (*)(class Bencher &);
+using BenchFunc = void (*)();
 
 class Bencher
 {
     uint64_t iterations_ = 0;
     std::chrono::nanoseconds duration_ = std::chrono::nanoseconds::zero();
-    uint64_t bytes_ = 0;
 public:
-    uint64_t bytes() const { return bytes_; }
     std::chrono::nanoseconds ns_per_iter() const
     {
         if (iterations_ != 0)
@@ -150,7 +146,7 @@ public:
         auto loop_start = std::chrono::high_resolution_clock::now();
         for (uint64_t i = 0; i < iterations; ++i)
         {
-            func(*this);
+            func();
         }
         duration_ = std::chrono::high_resolution_clock::now() - loop_start;
     }
@@ -252,32 +248,32 @@ std::string fmt_bench_samples(const BenchSamples & bs)
     return buffer;
 }
 
-BenchSamples benchmark(BenchFunc f)
+BenchSamples benchmark(BenchFunc bench_func, uint64_t bench_bytes)
 {
     BenchSamples bs;
     Bencher b;
 
-    bs.ns_iter_summ = b.auto_bench(f);
+    bs.ns_iter_summ = b.auto_bench(bench_func);
 
     auto ns_iter = std::max<uint64_t>(bs.ns_iter_summ.median, 1);
     auto iter_s = 1000000000 / ns_iter;
-    bs.mb_s = (b.bytes() * iter_s) / 1000000;
+    bs.mb_s = (bench_bytes * iter_s) / 1000000;
 
     return bs;
 }
 
+namespace detail {
+
 struct TestDescription
 {
-	TestDescription(BenchFunc func, const char * desc) :
-		func(func), desc(desc) {}
+	TestDescription(BenchFunc func, const char * desc, uint64_t bytes) :
+		func(func), desc(desc), bytes(bytes) {}
 	BenchFunc func;
 	const char * desc;
-	const char * tag;
+        uint64_t bytes;
 };
 
-} // namespace bench
-
-int run_tests_console(const std::vector<bench::TestDescription> & tests)
+int run_tests_console(const std::vector<TestDescription> & tests)
 {
 	int max_desc_len = 20;
 	for (const auto & test : tests)
@@ -286,33 +282,44 @@ int run_tests_console(const std::vector<bench::TestDescription> & tests)
 	}
 	for (const auto & test : tests)
 	{
-        bench::BenchSamples bs = bench::benchmark(test.func);
+        bench::BenchSamples bs = bench::benchmark(test.func, test.bytes);
         printf("%-*s %s\n", max_desc_len, test.desc,
                 bench::fmt_bench_samples(bs).c_str());
 	}
 	return 0;
 }
 
-uint64_t factorial(uint64_t n)
-{
-    return n > 0 ? factorial(n - 1) * n : 1;
-}
+#ifdef BENCH_CONFIG_MAIN
+    std::vector<TestDescription> g_benchTests;
+#else
+    extern std::vector<TestDescription> g_benchTests;
+#endif
+    struct ScopedBenchAdder {
+        ScopedBenchAdder(BenchFunc func, const char * desc, uint64_t bytes) {
+            g_benchTests.emplace_back(func, desc, bytes);
+        }
+    };
+} // namespace detail
 
-void fib_100(bench::Bencher &)
-{
-    factorial(100);
-}
+} // namespace bench
 
-void fib_1000(bench::Bencher &)
-{
-    factorial(1000);
-}
+#define BENCH_TEST_BYTES(test_name, bytes) \
+    namespace bench { \
+        namespace detail { \
+            void test_name(); \
+            ScopedBenchAdder test_name ## adder(test_name, #test_name, (bytes)); \
+        } \
+    } \
+    void bench::detail::test_name()
 
+#define BENCH_TEST(test_name) \
+    BENCH_TEST_BYTES(test_name, 0)
+
+#ifdef BENCH_CONFIG_MAIN
 int main()
 {
-	std::vector<bench::TestDescription> tests;
-	tests.emplace_back(fib_100, "fib_100");
-	tests.emplace_back(fib_1000, "fib_1000");
-	return run_tests_console(tests);
+    using namespace bench;
+    return run_tests_console(detail::g_benchTests);
 }
+#endif // BENCH_CONFIG_MAIN
 

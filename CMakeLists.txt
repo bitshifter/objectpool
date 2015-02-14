@@ -20,7 +20,7 @@ SET(CPPHDRS
 	src/memory_pool.hpp
 	)
 
-ADD_EXECUTABLE(runtests ${CPPHDRS} ${CPPSRCS} src/catch.hpp src/test.cpp)
+ADD_EXECUTABLE(runtests ${CPPHDRS} ${CPPSRCS} src/catch.hpp src/runtests.cpp)
 TARGET_COMPILE_DEFINITIONS(runtests PRIVATE -DUNIT_TESTS)
-ADD_EXECUTABLE(runbench ${CPPHDRS} ${CPPSRCS} src/bench.cpp)
+ADD_EXECUTABLE(runbench ${CPPHDRS} ${CPPSRCS} src/bench.hpp src/runbench.cpp)
 TARGET_COMPILE_DEFINITIONS(runbench PRIVATE -DBENCHMARKS)
