@@ -17,13 +17,13 @@ class MemoryPoolBase
 public:
 	typedef uint32_t uint_t;
 
-private:
-	uint_t max_entries_;
-	uint_t entry_size_;
+protected:
+	const uint_t max_entries_;
+	const uint_t entry_size_;
 	uint_t num_free_entries_;
-	uint_t num_initialised_;
 	uint8_t * pool_mem_;
 	uint8_t * next_free_;
+	std::vector<uint8_t> used_indices_;
 
 public:
 	MemoryPoolStats get_stats() const;
@@ -44,20 +44,6 @@ protected:
 
 	/// Returns the index of the given pointer
 	uint_t index_of(const uint8_t * ptr) const;
-
-	/// Returns the next valid index from and including the given index.
-	size_t next_index(size_t index) const;
-	/// Returns the index of the first element past the end of the last block.
-	size_t end_index() const;
-
-	/// Returns the current generation for checking iterators are valid
-	uint32_t generation() const;
-
-	/// Returns true if the given generation is valid
-	bool check_generation(uint32_t generation) const;
-
-private:
-	void increment_generation();
 };
 
 template <typename T>
@@ -87,111 +73,20 @@ public:
 		}
 	}
 
-	/*
-	class const_iterator : public std::iterator<std::forward_iterator_tag, T>
-	{
-		friend class MemoryPool<T>;
-		const MemoryPool<T> * pool_;
-		size_t index_;
-		uint32_t generation_;
-	protected:
-		const T * get() const
-		{
-			assert(pool_->check_generation(generation_));
-			return reinterpret_cast<const T *>(pool_->element_at(index_));
-		}
-		void inc()
-		{
-			assert(pool_->check_generation(generation_));
-			index_ = pool_->next_index(index_ + 1);
-		}
-		const_iterator(const MemoryPool<T> * pool, size_t index) :
-			pool_(pool), index_(index), generation_(pool_->generation()) {}
-	public:
-		const_iterator() : pool_(nullptr), index_(0),
-			generation_(MemoryPool<T>::INVALID_GENERATION)  {}
-		bool operator!=(const const_iterator & itr) const
-		{
-			return !(pool_ == itr.pool_ && index_ == itr.index_);
-		}
-		const T & operator*() const
-		{
-			return *get();
-		}
-		const T * operator->() const
-		{
-			return get();
-		}
-		const_iterator & operator++()
-		{
-			inc();
-			return *this;
-		}
-		const_iterator operator++(int)
-		{
-			const_iterator itr(*this);
-			inc();
-			return itr;
-		}
-	};
-
-	class iterator : public const_iterator
-	{
-		friend class MemoryPool<T>;
-		iterator(const MemoryPool<T> * pool, size_t index) :
-			const_iterator(pool, index) {}
-	public:
-		iterator() : const_iterator() {}
-		T & operator*() const
-		{
-			return *const_cast<T *>(const_iterator::get());
-		}
-		T * operator->() const
-		{
-			return const_cast<T *>(const_iterator::get());
-		}
-		iterator & operator++()
-		{
-			const_iterator::inc();
-			return *this;
-		}
-		iterator operator++(int)
-		{
-			iterator itr(*this);
-			const_iterator::inc();
-			return itr;
-		}
-	};
-
-	const_iterator begin() const
-	{
-		return const_iterator(this, next_index(0));
-	}
-
-	const_iterator end() const
-	{
-		return const_iterator(this, end_index());
-	}
-
-	iterator begin()
-	{
-		return iterator(this, next_index(0));
-	}
-
-	iterator end()
-	{
-		return iterator(this, end_index());
-	}
-
 	template <typename F>
-	void for_each(const F func)
+	void for_each(const F func) const
 	{
-		for (auto itr = begin(), last = end(); itr != last; ++itr)
+		uint_t index = 0;
+		for (auto itr = used_indices_.begin(), end = used_indices_.end();
+				itr != end; ++itr, ++index)
 		{
-			func(&*itr);
+			T * first = reinterpret_cast<T*>(pool_mem_);
+			if (*itr)
+			{
+				func(first + index);
+			}
 		}
 	}
-	*/
 };
 
 #endif // _BITS_MEMORY_POOL_H_

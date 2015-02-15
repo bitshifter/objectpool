@@ -35,6 +35,24 @@ namespace {
 	{
 		return (reinterpret_cast<uintptr_t>(ptr) & (align - 1)) == 0;
 	}
+
+	/// Returns true if the given value is a power of two
+	inline bool is_power_of_2(uint32_t x)
+	{
+		return ((x != 0) && ((x & (~x + 1)) == x));
+	}
+
+	/// Returns the exponent of a power of 2
+	inline uint32_t log2(uint32_t n)
+	{
+		#if _MSC_VER
+			unsigned long i;
+			_BitScanForward(&i, n);
+			return i;
+		#else
+			return __builtin_ctz(n);
+		#endif
+	}
 }
 
 MemoryPoolBase::MemoryPoolBase(uint_t entry_size, uint_t max_entries) :
@@ -43,8 +61,10 @@ MemoryPoolBase::MemoryPoolBase(uint_t entry_size, uint_t max_entries) :
 	num_free_entries_(max_entries),
 	pool_mem_(reinterpret_cast<uint8_t*>(
 				malloc_block(max_entries * entry_size, MIN_BLOCK_ALIGN))),
-	next_free_(pool_mem_)
+	next_free_(pool_mem_),
+	used_indices_(max_entries, false)
 {
+	assert(is_power_of_2(entry_size_));
 	// intialise the free list
 	for (uint_t i = 0; i < max_entries_; ++i)
 	{
@@ -69,20 +89,15 @@ MemoryPoolStats MemoryPoolBase::get_stats() const
 
 void * MemoryPoolBase::allocate()
 {
-	//increment_generation();
-
-	if (num_free_entries_ > 1)
+	if (num_free_entries_ > 0)
 	{
-		void * ptr = static_cast<void *>(next_free_);
+		uint8_t * ptr = next_free_;
+		const uint_t index = index_of(ptr);
+		assert(!used_indices_[index]);
+		used_indices_[index] = true;
+		next_free_ = num_free_entries_ > 1 ?
+			element_at(*reinterpret_cast<uint_t *>(next_free_)) : nullptr;
 		--num_free_entries_;
-		next_free_ = element_at(*reinterpret_cast<uint_t *>(next_free_));
-		return ptr;
-	}
-	else if (num_free_entries_ == 1)
-	{
-		void * ptr = static_cast<void *>(next_free_);
-		num_free_entries_ = 0;
-		next_free_ = nullptr;
 		return ptr;
 	}
 	else
@@ -93,11 +108,14 @@ void * MemoryPoolBase::allocate()
 
 void MemoryPoolBase::deallocate(void * ptr)
 {
-	//increment_generation();
 	assert(ptr >= pool_mem_ && ptr < (pool_mem_ + (entry_size_ * max_entries_)));
+	// remove index from used list
+	uint_t used_index = index_of(reinterpret_cast<uint8_t*>(ptr));
+	assert(used_indices_[used_index]);
+	used_indices_[used_index] = false;
 	// store index of next free entry in this pointer
-	uint_t index = next_free_ != nullptr ? index_of(next_free_) : max_entries_;
-	*reinterpret_cast<uint_t *>(ptr) = index;
+	uint_t next_index = next_free_ != nullptr ? index_of(next_free_) : max_entries_;
+	*reinterpret_cast<uint_t *>(ptr) = next_index;
 	// set next free to this pointer
 	next_free_ = reinterpret_cast<uint8_t *>(ptr);
 	++num_free_entries_;
@@ -116,35 +134,8 @@ const uint8_t * MemoryPoolBase::element_at(uint_t index) const
 
 MemoryPoolBase::uint_t MemoryPoolBase::index_of(const uint8_t * ptr) const
 {
-	return (ptr - pool_mem_) / entry_size_;
+	return (ptr - pool_mem_) >> (log2(entry_size_));
 }
-
-/*
-size_t MemoryPoolBase::next_index(size_t index) const
-{
-}
-
-size_t MemoryPoolBase::end_index() const
-{
-	return block_masks_.size() * NUM_BLOCK_ENTRIES;
-}
-
-uint32_t MemoryPoolBase::generation() const
-{
-	return generation_;
-}
-
-void MemoryPoolBase::increment_generation()
-{
-	uint32_t generation = generation_ + 1;
-	generation_ = generation == INVALID_GENERATION ? 0 : generation;
-}
-
-bool MemoryPoolBase::check_generation(uint32_t generation) const
-{
-	return generation_ == generation;
-}
-*/
 
 //
 // Tests
@@ -242,10 +233,18 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	}
 
 	// check remaining objects
+	i = 0;
+	mp.for_each([&i](const uint32_t * itr)
+			{
+				CHECK(*itr == 1u << i);
+				i += 2;
+			});
+	/*
 	for (i = 0; i < 64; i += 2)
 	{
 		CHECK(*v[i] == 1u << i);
 	}
+	*/
 
 	// allocate 16 new entries (fill first block)
     for (i = 1; i < 32; i += 2)
