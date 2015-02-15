@@ -18,12 +18,11 @@ public:
 	typedef uint32_t uint_t;
 
 protected:
-	const uint_t max_entries_;
-	const uint_t entry_size_;
-	uint_t num_free_entries_;
-	uint8_t * pool_mem_;
-	uint8_t * next_free_;
+	std::vector<uint_t> next_free_;
 	std::vector<uint8_t> used_indices_;
+	uint8_t * pool_mem_;
+	const uint_t entry_size_;
+	const uint_t max_entries_;
 
 public:
 	MemoryPoolStats get_stats() const;
@@ -36,7 +35,7 @@ protected:
 	MemoryPoolBase & operator=(const MemoryPoolBase &) = delete;
 
 	void * allocate();
-	void deallocate(void * ptr);
+	void deallocate(const void * ptr);
 
 	/// Returns element at a given index, no range checking is performed
 	uint8_t * element_at(uint_t index);

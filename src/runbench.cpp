@@ -2,28 +2,21 @@
 #include "bench.hpp"
 #include "memory_pool.hpp"
 
-/*
 template <typename T>
-void run(T pool, const size_t rounds)
+void alloc_free(T& pool)
 {
     for (size_t i = 0; i < pool.count(); i++)
+    {
         pool.alloc(i);
-
-    for (size_t r = 1; r < rounds; r++) {
-        for (size_t i = 0; i < pool.count(); i++) {
-            pool.free(i);
-            pool.alloc(i);
-        }
     }
-
-    for (size_t i = 0; i < pool.count(); i++) {
+    for (size_t i = 0; i < pool.count(); i++)
+    {
         pool.free(i);
     }
 }
-*/
 
 template <typename T>
-void run(T& pool)
+void alloc_memset_free(T& pool)
 {
     for (size_t i = 0; i < pool.count(); i++)
     {
@@ -106,45 +99,29 @@ public:
 };
 #endif // BENCH_HEAP_ALLOC
 
-BENCH_TEST_BYTES(pool_100x16_bytes, 100 * 16)
-{
-    SizedPoolAlloc<16> p(100);
-    run(p);
-}
+// I am a bad person. Bad and lazy.
+#define _CONFIG_BENCH_TEST(type, prefix, run, size, entries) \
+    static type<size> g_ ## prefix ## _ ## size ## x ## entries ## run ## _(entries); \
+    BENCH_TEST_BYTES(prefix ## _ ## run ## _ ## size ## x ## entries, size * entries) { \
+        run(g_ ## prefix ## _ ## size ## x ## entries ## run ## _); \
+    }
 
-#ifdef BENCH_HEAP_ALLOC
-BENCH_TEST_BYTES(heap_100x16_bytes, 100 * 16)
-{
-    SizedHeapAlloc<16> p(100);
-    run(p);
-}
-#endif
+#define POOL_BENCH_TEST(run, size, entries) \
+    _CONFIG_BENCH_TEST(SizedPoolAlloc, pool, run, size, entries)
+#define HEAP_BENCH_TEST(run, size, entries) \
+    _CONFIG_BENCH_TEST(SizedHeapAlloc, heap, run, size, entries)
 
-BENCH_TEST_BYTES(pool_100x128_bytes, 100 * 128)
-{
-    SizedPoolAlloc<128> p(100);
-    run(p);
-}
+POOL_BENCH_TEST(alloc_free, 16, 1000);
+HEAP_BENCH_TEST(alloc_free, 16, 1000);
+POOL_BENCH_TEST(alloc_free, 128, 1000);
+HEAP_BENCH_TEST(alloc_free, 128, 1000);
+POOL_BENCH_TEST(alloc_free, 512, 1000);
+HEAP_BENCH_TEST(alloc_free, 512, 1000);
 
-#ifdef BENCH_HEAP_ALLOC
-BENCH_TEST_BYTES(heap_100x128_bytes, 100 * 128)
-{
-    SizedHeapAlloc<128> p(100);
-    run(p);
-}
-#endif
-
-BENCH_TEST_BYTES(pool_100x1024_bytes, 100 * 1024)
-{
-    SizedPoolAlloc<1024> p(100);
-    run(p);
-}
-
-#ifdef BENCH_HEAP_ALLOC
-BENCH_TEST_BYTES(heap_100x1024_bytes, 100 * 1024)
-{
-    SizedHeapAlloc<1024> p(100);
-    run(p);
-}
-#endif
+POOL_BENCH_TEST(alloc_memset_free, 16, 1000);
+HEAP_BENCH_TEST(alloc_memset_free, 16, 1000);
+POOL_BENCH_TEST(alloc_memset_free, 128, 1000);
+HEAP_BENCH_TEST(alloc_memset_free, 128, 1000);
+POOL_BENCH_TEST(alloc_memset_free, 512, 1000);
+HEAP_BENCH_TEST(alloc_memset_free, 512, 1000);
 
