@@ -56,22 +56,22 @@ namespace {
 }
 
 MemoryPoolBase::MemoryPoolBase(uint_t entry_size, uint_t max_entries) :
-	used_indices_(max_entries, false),
 	pool_mem_(reinterpret_cast<uint8_t*>(
 				malloc_block(max_entries * entry_size, MIN_BLOCK_ALIGN))),
 	max_entries_(max_entries)
 {
 	// intialise the free list
-	next_free_.reserve(max_entries);
+	indices_.reserve(max_entries);
 	for (uint_t i = 0; i < max_entries; ++i)
 	{
-		next_free_.push_back(max_entries - 1 - i);
+		indices_.push_back(i + 1);
 	}
+	free_head_index_ = 0;
 }
 
 MemoryPoolBase::~MemoryPoolBase()
 {
-	assert(next_free_.size() == max_entries_);
+	assert(get_stats().allocation_count == 0);
 	free_block(pool_mem_);
 }
 
@@ -79,7 +79,11 @@ MemoryPoolStats MemoryPoolBase::get_stats() const
 {
 	MemoryPoolStats stats;
 	stats.block_count = 1;
-	stats.allocation_count = max_entries_ - next_free_.size();
+	stats.allocation_count = 0;
+	for (uint_t i = 0; i < max_entries_; ++i)
+	{
+		stats.allocation_count += indices_[i] == i;
+	}
 	return stats;
 }
 

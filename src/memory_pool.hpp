@@ -18,9 +18,15 @@ public:
 	typedef uint32_t uint_t;
 
 protected:
-	std::vector<uint_t> next_free_;
-	std::vector<uint8_t> used_indices_;
+	/// Indices storage are used both as a free list and a used list.
+	/// A free index contains the index of the next free index.
+	/// A used indice contains the index of itself.
+	std::vector<uint_t> indices_;
+	/// The first free index or max_entries_ if no free entries.
+	uint_t free_head_index_;
+	/// The start of pool memory.
 	uint8_t * pool_mem_;
+	/// The maximum number of pool entries
 	const uint_t max_entries_;
 
 public:
@@ -72,12 +78,12 @@ template <typename T>
 template<class... P>
 T * MemoryPool<T>::new_object(P&&... params)
 {
-	if (!next_free_.empty())
+	if (free_head_index_ != max_entries_)
 	{
-		uint_t index = next_free_.back();
-		next_free_.pop_back();
-		assert(!used_indices_[index]);
-		used_indices_[index] = true;
+		uint_t index = free_head_index_;
+		assert(indices_[index] != index);
+		free_head_index_ = indices_[index];
+		indices_[index] = index;
 		T * ptr = entry_at(index);
 		new(ptr) T(std::forward<P>(params)...);
 		return ptr;
@@ -99,26 +105,23 @@ void MemoryPool<T>::delete_object(const T * ptr)
 	ptr->~T();
 
 	// remove index from used list
-	uint_t used_index = index_of(ptr);
-	assert(used_indices_[used_index]);
-	used_indices_[used_index] = false;
-
+	uint_t index = index_of(ptr);
+	assert(indices_[index] == index);
+	indices_[index] = free_head_index_;
 	// store index of next free entry in this pointer
-	next_free_.push_back(used_index);
+	free_head_index_ = index;
 }
 
 template <typename T>
 template <typename F>
 void MemoryPool<T>::for_each(const F func) const
 {
-	uint_t index = 0;
-	for (auto itr = used_indices_.begin(), end = used_indices_.end();
-			itr != end; ++itr, ++index)
+	for (uint_t i = 0, count = max_entries_; i != count; ++i)
 	{
 		T * first = reinterpret_cast<T*>(pool_mem_);
-		if (*itr)
+		if (indices_[i] == i)
 		{
-			func(first + index);
+			func(first + i);
 		}
 	}
 }
