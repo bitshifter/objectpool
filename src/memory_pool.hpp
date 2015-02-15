@@ -38,17 +38,17 @@ protected:
 	void * allocate();
 	void deallocate(void * ptr);
 
-	/// Returns the next valid index from and including the given index.
-	size_t next_index(size_t index) const;
-	/// Returns the index of the first element past the end of the last block.
-	size_t end_index() const;
-
 	/// Returns element at a given index, no range checking is performed
 	uint8_t * element_at(uint_t index);
 	const uint8_t * element_at(uint_t index) const;
 
 	/// Returns the index of the given pointer
 	uint_t index_of(const uint8_t * ptr) const;
+
+	/// Returns the next valid index from and including the given index.
+	size_t next_index(size_t index) const;
+	/// Returns the index of the first element past the end of the last block.
+	size_t end_index() const;
 
 	/// Returns the current generation for checking iterators are valid
 	uint32_t generation() const;

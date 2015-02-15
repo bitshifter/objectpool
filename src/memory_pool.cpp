@@ -10,50 +10,23 @@ namespace {
 
 	const size_t MIN_BLOCK_ALIGN = 64;
 
-	inline uint8_t * malloc_block(size_t block_size, size_t alignment)
+	inline void * malloc_block(size_t block_size, size_t alignment)
 	{
 #if defined( _WIN32 )
-		return reinterpret_cast<uint8_t*>(
-				_aligned_malloc(block_size, alignment));
+		return _aligned_malloc(block_size, alignment);
 #else
 		void * ptr;
 		int result = posix_memalign(&ptr, alignment, block_size);
-		return result == 0 ? reinterpret_cast<uint8_t *>(ptr) : nullptr;
+		return result == 0 ? ptr : nullptr;
 #endif
 	}
 
-	inline void free_block(uint8_t * ptr)
+	inline void free_block(void * ptr)
 	{
 #if defined( _WIN32 )
 		_aligned_free(ptr);
 #else
 		std::free(ptr);
-#endif
-	}
-
-	/// Returns the next unused bit index
-	inline uint32_t find_slot(uint32_t n)
-	{
-		// create a word with a single 1-bit at the position of the rightmost
-		// 0-bit in x, producing 0 if none, then count the trailing zeros.
-		uint32_t m = ~n & (n + 1);
-#if _MSC_VER
-		unsigned long i;
-		_BitScanForward(&i, m);
-		return i;
-#else
-		return __builtin_ctz(m);
-#endif
-	}
-
-
-	/// Returns the number of allocations in the given mask
-	inline uint32_t allocation_count(uint32_t n)
-	{
-#if _MSC_VER
-		return __popcnt(n);
-#else
-		return __builtin_popcount(n);
 #endif
 	}
 
@@ -68,7 +41,8 @@ MemoryPoolBase::MemoryPoolBase(uint_t entry_size, uint_t max_entries) :
 	max_entries_(max_entries),
 	entry_size_(entry_size),
 	num_free_entries_(max_entries),
-	pool_mem_(malloc_block(max_entries * entry_size, MIN_BLOCK_ALIGN)),
+	pool_mem_(reinterpret_cast<uint8_t*>(
+				malloc_block(max_entries * entry_size, MIN_BLOCK_ALIGN))),
 	next_free_(pool_mem_)
 {
 	// intialise the free list
