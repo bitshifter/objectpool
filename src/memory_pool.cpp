@@ -17,8 +17,8 @@ namespace {
 				_aligned_malloc(block_size, alignment));
 #else
 		void * ptr;
-		posix_memalign(&ptr, alignment, block_size);
-		return reinterpret_cast<uint8_t *>(ptr);
+		int result = posix_memalign(&ptr, alignment, block_size);
+		return result == 0 ? reinterpret_cast<uint8_t *>(ptr) : nullptr;
 #endif
 	}
 

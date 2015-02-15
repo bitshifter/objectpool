@@ -176,6 +176,15 @@ public:
 	{
 		return iterator(this, end_index());
 	}
+
+	template <typename F>
+	void for_each(const F func)
+	{
+		for (auto itr = begin(), last = end(); itr != last; ++itr)
+		{
+			func(&*itr);
+		}
+	}
 };
 
 #endif // _BITS_MEMORY_POOL_H_
