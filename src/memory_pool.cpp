@@ -59,11 +59,8 @@ MemoryPoolBase::MemoryPoolBase(uint_t entry_size, uint_t max_entries) :
 	used_indices_(max_entries, false),
 	pool_mem_(reinterpret_cast<uint8_t*>(
 				malloc_block(max_entries * entry_size, MIN_BLOCK_ALIGN))),
-	entry_size_(entry_size),
 	max_entries_(max_entries)
 {
-	// TODO: remove this constraint
-	assert(is_power_of_2(entry_size_));
 	// intialise the free list
 	next_free_.reserve(max_entries);
 	for (uint_t i = 0; i < max_entries; ++i)
@@ -84,48 +81,6 @@ MemoryPoolStats MemoryPoolBase::get_stats() const
 	stats.block_count = 1;
 	stats.allocation_count = max_entries_ - next_free_.size();
 	return stats;
-}
-
-void * MemoryPoolBase::allocate()
-{
-	if (!next_free_.empty())
-	{
-		uint_t index = next_free_.back();
-		next_free_.pop_back();
-		assert(!used_indices_[index]);
-		used_indices_[index] = true;
-		return element_at(index);
-	}
-	else
-	{
-		return nullptr;
-	}
-}
-
-void MemoryPoolBase::deallocate(const void * ptr)
-{
-	assert(ptr >= pool_mem_ && ptr < (pool_mem_ + (entry_size_ * max_entries_)));
-	// remove index from used list
-	uint_t used_index = index_of(reinterpret_cast<const uint8_t*>(ptr));
-	assert(used_indices_[used_index]);
-	used_indices_[used_index] = false;
-	// store index of next free entry in this pointer
-	next_free_.push_back(used_index);
-}
-
-inline uint8_t * MemoryPoolBase::element_at(uint_t index)
-{
-	return pool_mem_ + (index * entry_size_);
-}
-
-inline const uint8_t * MemoryPoolBase::element_at(uint_t index) const
-{
-	return const_cast<MemoryPoolBase *>(this)->element_at(index);
-}
-
-MemoryPoolBase::uint_t MemoryPoolBase::index_of(const uint8_t * ptr) const
-{
-	return (ptr - pool_mem_) >> (log2(entry_size_));
 }
 
 //
