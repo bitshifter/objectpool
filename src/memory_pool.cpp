@@ -64,175 +64,90 @@ namespace {
 	}
 }
 
-MemoryPoolBase::MemoryPoolBase(uint32_t entry_size) :
-	stride_(entry_size),
-	free_block_(0),
-	generation_(0)
+MemoryPoolBase::MemoryPoolBase(uint_t entry_size, uint_t max_entries) :
+	max_entries_(max_entries),
+	entry_size_(entry_size),
+	num_free_entries_(max_entries),
+	pool_mem_(malloc_block(max_entries * entry_size, MIN_BLOCK_ALIGN)),
+	next_free_(pool_mem_)
 {
+	// intialise the free list
+	for (uint_t i = 0; i < max_entries_; ++i)
+	{
+		uint_t * ptr = reinterpret_cast<uint_t *>(element_at(i));
+		*ptr = i + 1;
+	}
 }
 
 MemoryPoolBase::~MemoryPoolBase()
 {
-	mask_t composite_mask = 0;
-	for (const auto block_mask : block_masks_)
-	{
-		composite_mask = composite_mask | block_mask;
-	}
-	assert(composite_mask == 0 && "pool memory still allocated");
-	for (auto block : blocks_)
-	{
-		free_block(block);
-	}
+	assert(num_free_entries_ == max_entries_);
+	free_block(pool_mem_);
 }
 
 MemoryPoolStats MemoryPoolBase::get_stats() const
 {
 	MemoryPoolStats stats;
-	stats.block_count = block_masks_.size();
-	stats.allocation_count = 0;
-	for (const auto block_mask : block_masks_)
-	{
-		stats.allocation_count += allocation_count(block_mask);
-	}
+	stats.block_count = 1;
+	stats.allocation_count = max_entries_ - num_free_entries_;
 	return stats;
 }
 
 void * MemoryPoolBase::allocate()
 {
-	increment_generation();
+	//increment_generation();
 
-	// find a block with space
-	const size_t last_block = block_masks_.size();
-	size_t free_block;
-	for (free_block = free_block_; free_block < last_block; ++free_block)
+	if (num_free_entries_ > 1)
 	{
-		// found a block that isn't full
-		if (block_masks_[free_block] != ~0u) break;
+		void * ptr = static_cast<void *>(next_free_);
+		--num_free_entries_;
+		next_free_ = element_at(*reinterpret_cast<uint_t *>(next_free_));
+		return ptr;
 	}
-
-	// if no free space, allocate a new block and return first entry
-	if (free_block == block_masks_.size())
+	else if (num_free_entries_ == 1)
 	{
-		uint8_t * new_block = malloc_block(NUM_BLOCK_ENTRIES * stride_,
-				MIN_BLOCK_ALIGN);
-		blocks_.push_back(new_block);
-		block_masks_.push_back(0x1);
-		// this is the new free block
-		free_block_ = free_block;
-		return new_block;
+		void * ptr = static_cast<void *>(next_free_);
+		num_free_entries_ = 0;
+		next_free_ = nullptr;
+		return ptr;
 	}
-
-	// find free entry in the block
-	uint32_t block_mask = block_masks_[free_block];
-	uint32_t slot = find_slot(block_mask);
-
-	assert(slot < NUM_BLOCK_ENTRIES);
-	assert((block_mask & (1 << slot)) == 0);
-
-	// get the offset for this allocation and flag the bit as used
-	uint8_t * ptr = blocks_[free_block] + stride_ * slot;
-	block_masks_[free_block] = block_mask | (1 << slot);
-
-	// increment free block if it's full
-	free_block_ = free_block + (block_masks_[free_block] == ~0u);
-
-	return ptr;
+	else
+	{
+		return nullptr;
+	}
 }
 
 void MemoryPoolBase::deallocate(void * ptr)
 {
-	increment_generation();
-
-	const size_t block_size = NUM_BLOCK_ENTRIES * stride_;
-	uint8_t ** blocks = blocks_.data();
-	uint32_t * block_masks = block_masks_.data();
-	assert(blocks_.size() == block_masks_.size());
-	const size_t block_count = blocks_.size();
-
-	// search for the block containing ptr
-	for (size_t block_index = 0; block_index < block_count; ++block_index)
-	{
-		const auto block_start = *blocks;
-		const auto block_end = block_start + block_size;
-		// check if pointer is in range
-		if (ptr >= block_start && ptr < block_end)
-		{
-			uint8_t * entry = static_cast<uint8_t *>(ptr);
-			// get the index of the entry
-			size_t index = (entry - block_start) / stride_;
-			// assert that the stride is correct
-			assert((block_start + (index * stride_)) == entry);
-			// flag the block mask bit as unused
-			uint32_t bit = 1 << index;
-			*block_masks = *block_masks & ~bit;
-
-			// if this block is now empty then reclaim memory
-			if (*block_masks == 0)
-			{
-				free_block(block_start);
-				block_masks_.erase(block_masks_.begin() + block_index);
-				blocks_.erase(blocks_.begin() + block_index);
-			}
-
-			// check if this block is closer to the front of the list
-			if (block_index < free_block_)
-			{
-				// this block now has some space
-				free_block_ = block_index;
-			}
-
-			// ensure free block is in range
-			if (free_block_ >= block_masks_.size())
-			{
-				free_block_ = std::max<size_t>(1, block_masks_.size()) - 1;
-			}
-
-			return;
-		}
-		++blocks;
-		++block_masks;
-	}
-
-	assert(false && "failed to deallocate entry");
+	//increment_generation();
+	assert(ptr >= pool_mem_ && ptr < (pool_mem_ + (entry_size_ * max_entries_)));
+	// store index of next free entry in this pointer
+	uint_t index = next_free_ != nullptr ? index_of(next_free_) : max_entries_;
+	*reinterpret_cast<uint_t *>(ptr) = index;
+	// set next free to this pointer
+	next_free_ = reinterpret_cast<uint8_t *>(ptr);
+	++num_free_entries_;
 }
 
 
-uint8_t * MemoryPoolBase::element_at(size_t index)
+uint8_t * MemoryPoolBase::element_at(uint_t index)
 {
-	const size_t block_index = index / NUM_BLOCK_ENTRIES;
-	const size_t bit_index = index - (block_index * NUM_BLOCK_ENTRIES);
-	assert(block_index < block_masks_.size());
-	assert(bit_index < NUM_BLOCK_ENTRIES);
-	assert(block_masks_[block_index] & (1 << bit_index));
-	return blocks_[block_index] + bit_index * stride_;
+	return pool_mem_ + (index * entry_size_);
 }
 
-const uint8_t * MemoryPoolBase::element_at(size_t index) const
+const uint8_t * MemoryPoolBase::element_at(uint_t index) const
 {
 	return const_cast<MemoryPoolBase *>(this)->element_at(index);
 }
 
+MemoryPoolBase::uint_t MemoryPoolBase::index_of(const uint8_t * ptr) const
+{
+	return (ptr - pool_mem_) / entry_size_;
+}
+
+/*
 size_t MemoryPoolBase::next_index(size_t index) const
 {
-	const size_t block_count = block_masks_.size();
-	size_t block_index = index / NUM_BLOCK_ENTRIES;
-	size_t bit_index = index - (block_index * NUM_BLOCK_ENTRIES);
-	assert(bit_index < NUM_BLOCK_ENTRIES);
-	while (block_index < block_count)
-	{
-		// found a valid entry
-		if (block_masks_[block_index] & (1 << bit_index))
-		{
-			return (block_index * NUM_BLOCK_ENTRIES) + bit_index;
-		}
-		++bit_index;
-		if (bit_index == NUM_BLOCK_ENTRIES)
-		{
-			++block_index;
-		}
-	}
-	// past the last block
-	return block_count * NUM_BLOCK_ENTRIES;
 }
 
 size_t MemoryPoolBase::end_index() const
@@ -255,6 +170,7 @@ bool MemoryPoolBase::check_generation(uint32_t generation) const
 {
 	return generation_ == generation;
 }
+*/
 
 //
 // Tests
@@ -266,7 +182,7 @@ bool MemoryPoolBase::check_generation(uint32_t generation) const
 
 TEST_CASE("Single new and delete", "[allocation]")
 {
-	MemoryPool<uint32_t> mp;
+	MemoryPool<uint32_t> mp(64);
 	uint32_t * p = mp.new_object(0xaabbccdd);
 	REQUIRE(p != nullptr);
 	CHECK(is_aligned(p, 4));
@@ -278,7 +194,7 @@ TEST_CASE("Single new and delete", "[allocation]")
 
 TEST_CASE("Double new and delete", "[allocation]")
 {
-	MemoryPool<uint32_t> mp;
+	MemoryPool<uint32_t> mp(64);
 	uint32_t * p1 = mp.new_object(0x11223344);
 	REQUIRE(p1 != nullptr);
 	CHECK(is_aligned(p1, 4));
@@ -294,7 +210,7 @@ TEST_CASE("Double new and delete", "[allocation]")
 
 TEST_CASE("Block fill and free", "[allocation]")
 {
-	MemoryPool<uint32_t> mp;
+	MemoryPool<uint32_t> mp(64);
 	std::vector<uint32_t *> v;
 	for (size_t i = 0; i < 64; ++i)
 	{
@@ -311,7 +227,7 @@ TEST_CASE("Block fill and free", "[allocation]")
 
 TEST_CASE("Iterate full blocks", "[iteration]")
 {
-	MemoryPool<uint32_t> mp;
+	MemoryPool<uint32_t> mp(64);
 	std::vector<uint32_t *> v;
 	size_t i;
 	for (i = 0; i < 64; ++i)
@@ -325,14 +241,14 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	{
 		auto stats = mp.get_stats();
 		CHECK(stats.allocation_count == 64u);
-		CHECK(stats.block_count == 2u);
+		CHECK(stats.block_count == 1u);
 	}
 
 	// check values
 	i = 0;
-	for (auto itr = mp.begin(), end = mp.end(); itr != end; ++itr)
+	for (auto itr = v.begin(), end = v.end(); itr != end; ++itr)
 	{
-		CHECK(*itr == 1u << i);
+		CHECK(**itr == 1u << i);
 		++i;
 	}
 
@@ -348,15 +264,13 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	{
 		auto stats = mp.get_stats();
 		CHECK(stats.allocation_count == 32u);
-		CHECK(stats.block_count == 2u);
+		CHECK(stats.block_count == 1u);
 	}
 
 	// check remaining objects
-	i = 0;
-	for (auto itr = mp.begin(), end = mp.end(); itr != end; ++itr)
+	for (i = 0; i < 64; i += 2)
 	{
-		CHECK(*itr == 1u << i);
-		i += 2;
+		CHECK(*v[i] == 1u << i);
 	}
 
 	// allocate 16 new entries (fill first block)
@@ -370,7 +284,7 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	{
 		auto stats = mp.get_stats();
 		CHECK(stats.allocation_count == 48u);
-		CHECK(stats.block_count == 2u);
+		CHECK(stats.block_count == 1u);
 	}
 
 	// delete objects in second block
@@ -396,7 +310,7 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 	{
 		auto stats = mp.get_stats();
 		CHECK(stats.allocation_count == 0u);
-		CHECK(stats.block_count == 0u);
+		CHECK(stats.block_count == 1u);
 	}
 }
 

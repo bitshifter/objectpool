@@ -14,21 +14,22 @@ struct MemoryPoolStats
 
 class MemoryPoolBase
 {
-	typedef uint32_t mask_t;
-	std::vector<mask_t> block_masks_;
-	std::vector<uint8_t *> blocks_;
-	const uint32_t stride_;
-	uint32_t free_block_;
-	uint32_t generation_;
-	static const size_t NUM_BLOCK_ENTRIES = sizeof(mask_t) * 8;
+public:
+	typedef uint32_t uint_t;
+
+private:
+	uint_t max_entries_;
+	uint_t entry_size_;
+	uint_t num_free_entries_;
+	uint_t num_initialised_;
+	uint8_t * pool_mem_;
+	uint8_t * next_free_;
 
 public:
-	static const uint32_t INVALID_GENERATION = ~0u;
-
 	MemoryPoolStats get_stats() const;
 
 protected:
-	MemoryPoolBase(uint32_t entry_size);
+	MemoryPoolBase(uint_t entry_size, uint_t max_entries);
 	~MemoryPoolBase();
 
 	MemoryPoolBase(const MemoryPoolBase &) = delete;
@@ -43,8 +44,11 @@ protected:
 	size_t end_index() const;
 
 	/// Returns element at a given index, no range checking is performed
-	uint8_t * element_at(size_t index);
-	const uint8_t * element_at(size_t index) const;
+	uint8_t * element_at(uint_t index);
+	const uint8_t * element_at(uint_t index) const;
+
+	/// Returns the index of the given pointer
+	uint_t index_of(const uint8_t * ptr) const;
 
 	/// Returns the current generation for checking iterators are valid
 	uint32_t generation() const;
@@ -60,7 +64,8 @@ template <typename T>
 class MemoryPool : public MemoryPoolBase
 {
 public:
-	MemoryPool() : MemoryPoolBase(sizeof(T)) {}
+	MemoryPool(uint_t max_entries) :
+		MemoryPoolBase(sizeof(T), max_entries) {}
 
 	template<class... P>
 	T * new_object(P&&... params)
@@ -82,6 +87,7 @@ public:
 		}
 	}
 
+	/*
 	class const_iterator : public std::iterator<std::forward_iterator_tag, T>
 	{
 		friend class MemoryPool<T>;
@@ -185,6 +191,7 @@ public:
 			func(&*itr);
 		}
 	}
+	*/
 };
 
 #endif // _BITS_MEMORY_POOL_H_

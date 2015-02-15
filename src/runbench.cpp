@@ -29,10 +29,12 @@ void run(T& pool)
     {
         pool.alloc(i);
     }
+    /*
     for (size_t i =0; i < 128; ++i)
     {
         pool.memset(i);
     }
+    */
     for (size_t i = 0; i < pool.count(); i++)
     {
         pool.free(i);
@@ -50,6 +52,7 @@ class SizedPoolAlloc
     std::vector<value_type *> ptr;
 public:
     SizedPoolAlloc(size_t count) :
+        pool(count),
         ptr(count, nullptr) {}
     void alloc(size_t i) {
         ptr[i] = pool.new_object();
@@ -59,6 +62,7 @@ public:
         pool.delete_object(ptr[i]);
         ptr[i] = nullptr;
     }
+    /*
     void memset(int value)
     {
         const size_t value_size = sizeof(value_type);
@@ -66,6 +70,7 @@ public:
                 ::memset(ptr, value, value_size);
                 });
     }
+    */
     size_t count() const
     {
         return ptr.size();
