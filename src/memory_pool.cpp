@@ -10,6 +10,12 @@ namespace {
 
 	const size_t MIN_BLOCK_ALIGN = 64;
 
+	/// Aligns n to align. N will be unchanged if it is already aligned
+	inline size_t align_to(size_t n, size_t align)
+	{
+		return (1 + (n - 1) / align) * align;
+	}
+
 	inline void * malloc_block(size_t block_size, size_t alignment)
 	{
 #if defined( _WIN32 )
@@ -31,7 +37,7 @@ namespace {
 	}
 
 	/// Returns true if the pointer is of the given alignment
-	inline bool is_aligned(const void * ptr, size_t align)
+	inline bool is_aligned_to(const void * ptr, size_t align)
 	{
 		return (reinterpret_cast<uintptr_t>(ptr) & (align - 1)) == 0;
 	}
@@ -55,24 +61,39 @@ namespace {
 	}
 }
 
-MemoryPoolBase::MemoryPoolBase(uint_t entry_size, uint_t max_entries) :
-	pool_mem_(reinterpret_cast<uint8_t*>(
-				malloc_block(max_entries * entry_size, MIN_BLOCK_ALIGN))),
+MemoryPoolBase::MemoryPoolBase(size_t entry_size, index_t max_entries) :
+	indices_(nullptr),
+	free_head_index_(0),
+	pool_mem_(nullptr),
 	max_entries_(max_entries)
 {
-	// intialise the free list
-	indices_.reserve(max_entries);
-	for (uint_t i = 0; i < max_entries; ++i)
+	const size_t index_size = sizeof(index_t);
+	// align entries to the index alignment or index_t size at minimum
+	const size_t entry_align = std::max(entry_size, index_size);
+	// ensure indices include offset for entry alignment
+	const size_t indices_size = align_to(index_size * max_entries, entry_align);
+	// align block to cache line size, or entry alignment if larger
+	const size_t block_align = std::max(entry_align, MIN_BLOCK_ALIGN);
+	const size_t entries_size = entry_size * max_entries;
+	// block size includes indices + entry alignment + entries
+	const size_t block_size = indices_size + entries_size;
+	uint8_t * bytes = reinterpret_cast<uint8_t*>(
+			malloc_block(block_size, block_align));
+	indices_ = reinterpret_cast<index_t*>(bytes);
+	// pool mem is offset from the start of the block
+	pool_mem_ = bytes + indices_size;
+	assert(is_aligned_to(indices_, block_align));
+	assert(is_aligned_to(pool_mem_, entry_align));
+	for (index_t i = 0; i < max_entries; ++i)
 	{
-		indices_.push_back(i + 1);
+		indices_[i] = i + 1;
 	}
-	free_head_index_ = 0;
 }
 
 MemoryPoolBase::~MemoryPoolBase()
 {
 	assert(get_stats().allocation_count == 0);
-	free_block(pool_mem_);
+	free_block(indices_);
 }
 
 MemoryPoolStats MemoryPoolBase::get_stats() const
@@ -80,7 +101,7 @@ MemoryPoolStats MemoryPoolBase::get_stats() const
 	MemoryPoolStats stats;
 	stats.block_count = 1;
 	stats.allocation_count = 0;
-	for (uint_t i = 0; i < max_entries_; ++i)
+	for (index_t i = 0; i < max_entries_; ++i)
 	{
 		stats.allocation_count += indices_[i] == i;
 	}
@@ -100,9 +121,9 @@ TEST_CASE("Single new and delete", "[allocation]")
 	MemoryPool<uint32_t> mp(64);
 	uint32_t * p = mp.new_object(0xaabbccdd);
 	REQUIRE(p != nullptr);
-	CHECK(is_aligned(p, 4));
+	CHECK(is_aligned_to(p, 4));
 	// should be aligned to the cache line size
-	CHECK(is_aligned(p, MIN_BLOCK_ALIGN));
+	CHECK(is_aligned_to(p, MIN_BLOCK_ALIGN));
 	CHECK(*p == 0xaabbccdd);
 	mp.delete_object(p);
 }
@@ -112,10 +133,10 @@ TEST_CASE("Double new and delete", "[allocation]")
 	MemoryPool<uint32_t> mp(64);
 	uint32_t * p1 = mp.new_object(0x11223344);
 	REQUIRE(p1 != nullptr);
-	CHECK(is_aligned(p1, 4));
+	CHECK(is_aligned_to(p1, 4));
 	uint32_t * p2 = mp.new_object(0x55667788);
 	REQUIRE(p2 != nullptr);
-	CHECK(is_aligned(p2, 4));
+	CHECK(is_aligned_to(p2, 4));
 	CHECK(p2 == p1 + 1);
 	CHECK(*p1 == 0x11223344);
 	mp.delete_object(p1);
