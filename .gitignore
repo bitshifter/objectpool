@@ -1,6 +1,6 @@
 *.o
 *.pyc
-*.swp
+*.sw[a-z]
 CMakeLists.txt.user
 /build/
 /test
