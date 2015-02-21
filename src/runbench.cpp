@@ -39,7 +39,7 @@ template <size_t N>
 class SizedPoolAlloc
 {
     typedef Sized<N> value_type;
-    StaticMemoryPool<value_type> pool;
+    FixedMemoryPool<value_type> pool;
     std::vector<value_type *> ptr;
 public:
     SizedPoolAlloc(size_t count) :
@@ -124,4 +124,3 @@ POOL_BENCH_TEST(alloc_memset_free, 128, 1000);
 HEAP_BENCH_TEST(alloc_memset_free, 128, 1000);
 POOL_BENCH_TEST(alloc_memset_free, 512, 1000);
 HEAP_BENCH_TEST(alloc_memset_free, 512, 1000);
-
