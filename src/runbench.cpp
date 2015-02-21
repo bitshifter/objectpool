@@ -39,7 +39,7 @@ template <size_t N>
 class SizedPoolAlloc
 {
     typedef Sized<N> value_type;
-    MemoryPool<value_type> pool;
+    StaticMemoryPool<value_type> pool;
     std::vector<value_type *> ptr;
 public:
     SizedPoolAlloc(size_t count) :
