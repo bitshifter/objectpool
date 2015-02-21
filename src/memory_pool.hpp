@@ -48,12 +48,12 @@ public:
 	MemoryPool(index_t max_entries);
 
 	template<class... P>
-	T * new_object(P&&... params);
+		T * new_object(P&&... params);
 
 	void delete_object(const T * ptr);
 
 	template <typename F>
-	void for_each(const F func) const;
+		void for_each(const F func) const;
 
 protected:
 
@@ -76,7 +76,7 @@ MemoryPool<T>::MemoryPool(index_t max_entries) :
 	MemoryPoolBase(entry_size, max_entries) {}
 
 template <typename T>
-template<class... P>
+template <class... P>
 T * MemoryPool<T>::new_object(P&&... params)
 {
 	if (free_head_index_ != max_entries_)
