@@ -7,12 +7,9 @@ void alloc_free(T& pool)
 {
     for (size_t i = 0; i < pool.count(); i++)
     {
-        pool.alloc(i);
+        pool.new_index(i);
     }
-    for (size_t i = 0; i < pool.count(); i++)
-    {
-        pool.free(i);
-    }
+    pool.delete_all();
 }
 
 template <typename T>
@@ -20,16 +17,19 @@ void alloc_memset_free(T& pool)
 {
     for (size_t i = 0; i < pool.count(); i++)
     {
-        pool.alloc(i);
+        pool.new_index(i);
     }
+
+    const size_t value_size = sizeof(typename T::value_type);
     for (size_t i =0; i < 128; ++i)
     {
-        pool.memset(i);
+        pool.for_each([i, value_size](typename T::value_type * ptr)
+        {
+            ::memset(ptr, i, value_size);
+        });
     }
-    for (size_t i = 0; i < pool.count(); i++)
-    {
-        pool.free(i);
-    }
+
+    pool.delete_all();
 }
 
 template <size_t N>
@@ -38,20 +38,32 @@ struct Sized { char c[N]; };
 template <typename PoolT>
 class SizedPoolAlloc
 {
-    typedef typename PoolT::value_type value_type;
-    PoolT pool;
-    std::vector<value_type *> ptr;
 public:
+    typedef typename PoolT::value_type value_type;
+
     SizedPoolAlloc(size_t block_size, size_t allocs) :
         pool(block_size),
         ptr(allocs, nullptr) {}
-    void alloc(size_t i) {
+    void new_index(size_t i)
+    {
         ptr[i] = pool.new_object();
     }
-    void free(size_t i)
+    void delete_index(size_t i)
     {
         pool.delete_object(ptr[i]);
         ptr[i] = nullptr;
+    }
+    void delete_all()
+    {
+        pool.delete_all();
+        size_t size = ptr.size();
+        ptr.clear();
+        ptr.resize(size, nullptr);
+    }
+    template <typename F>
+    void for_each(const F func) const
+    {
+        pool.for_each(func);
     }
     void memset(int value)
     {
@@ -64,6 +76,10 @@ public:
     {
         return ptr.size();
     }
+
+private:
+    PoolT pool;
+    std::vector<value_type *> ptr;
 };
 
 #define BENCH_HEAP_ALLOC
@@ -71,18 +87,35 @@ public:
 template <size_t N>
 class SizedHeapAlloc
 {
-    typedef Sized<N> value_type;
-    std::vector<value_type *> ptr;
 public:
+    typedef Sized<N> value_type;
+
     SizedHeapAlloc(size_t /*block_size*/, size_t allocs) :
         ptr(allocs, nullptr) {}
-    void alloc(size_t i) {
+    void new_index(size_t i)
+    {
         ptr[i] = new value_type;
     }
-    void free(size_t i)
+    void delete_index(size_t i)
     {
         delete ptr[i];
         ptr[i] = nullptr;
+    }
+    void delete_all()
+    {
+        for (size_t i = 0; i < ptr.size(); i++)
+        {
+            delete ptr[i];
+            ptr[i] = nullptr;
+        }
+    }
+    template <typename F>
+    void for_each(const F func) const
+    {
+        for (size_t i = 0; i < ptr.size(); i++)
+        {
+            func(ptr[i]);
+        }
     }
     size_t count() const
     {
@@ -96,6 +129,8 @@ public:
             ::memset(p, value, value_size);
         }
     }
+private:
+    std::vector<value_type *> ptr;
 };
 #endif // BENCH_HEAP_ALLOC
 
