@@ -135,8 +135,8 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
 
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == size);
-        CHECK(stats.block_count == expected_blocks);
+        CHECK(stats.num_allocations == size);
+        CHECK(stats.num_blocks == expected_blocks);
     }
 
     // check values
@@ -158,8 +158,8 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
     // check allocation count is reduced but block count is the same
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == half_size);
-        CHECK(stats.block_count == expected_blocks);
+        CHECK(stats.num_allocations == half_size);
+        CHECK(stats.num_blocks == expected_blocks);
     }
 
     // check remaining objects
@@ -186,8 +186,8 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
     // check allocation and block count
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == size - (half_size / 2));
-        CHECK(stats.block_count == expected_blocks);
+        CHECK(stats.num_allocations == size - (half_size >> 1));
+        CHECK(stats.num_blocks == expected_blocks);
     }
 
     // delete objects in second block
@@ -201,8 +201,8 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
     // check that the empty block was freed
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == half_size);
-        CHECK(stats.block_count == expected_blocks);
+        CHECK(stats.num_allocations == half_size);
+        CHECK(stats.num_blocks == expected_blocks);
     }
 
     for (auto p : v)
@@ -212,8 +212,8 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
 
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == 0u);
-        CHECK(stats.block_count == expected_blocks);
+        CHECK(stats.num_allocations == 0u);
+        CHECK(stats.num_blocks == expected_blocks);
     }
 }
 
@@ -257,6 +257,95 @@ TEST_CASE("DynamicMemoryPool double block fill and free", "[dynamicpool]")
 {
     DynamicMemoryPool<uint32_t> mp(64);
     blockFillAndFree(mp, 128);
+}
+
+TEST_CASE("DynamicMemoryPool delete all", "[dynamicpool")
+{
+    std::vector<uint32_t*> v(128, nullptr);
+    DynamicMemoryPool<uint32_t> mp(32);
+    CHECK(mp.get_stats().num_blocks == 1);
+    CHECK(mp.get_stats().num_allocations == 0);
+    mp.delete_all();
+    CHECK(mp.get_stats().num_blocks == 1);
+    CHECK(mp.get_stats().num_allocations == 0);
+    mp.reclaim_memory();
+    CHECK(mp.get_stats().num_blocks == 1);
+    CHECK(mp.get_stats().num_allocations == 0);
+    for (size_t i = 0; i < 64; ++i)
+    {
+        mp.new_object(1 << i);
+    }
+    CHECK(mp.get_stats().num_blocks == 2);
+    CHECK(mp.get_stats().num_allocations == 64);
+    mp.delete_all();
+    CHECK(mp.get_stats().num_blocks == 2);
+    CHECK(mp.get_stats().num_allocations == 0);
+    mp.reclaim_memory();
+    CHECK(mp.get_stats().num_blocks == 1);
+    CHECK(mp.get_stats().num_allocations == 0);
+    for (size_t i = 0; i < 64; ++i)
+    {
+        v[i] = mp.new_object(1 << i);
+    }
+    for (size_t i = 0; i < 32; ++i)
+    {
+        mp.delete_object(v[i]);
+        v[i] = nullptr;
+    }
+    mp.reclaim_memory();
+    CHECK(mp.get_stats().num_blocks == 1);
+    CHECK(mp.get_stats().num_allocations == 32);
+    mp.delete_all();
+    CHECK(mp.get_stats().num_blocks == 1);
+    CHECK(mp.get_stats().num_allocations == 0);
+    for (size_t i = 0; i < 128; ++i)
+    {
+        v[i] = mp.new_object(1 << i);
+    }
+    CHECK(mp.get_stats().num_blocks == 4);
+    CHECK(mp.get_stats().num_allocations == 128);
+    for (size_t i = 32; i < 96; ++i)
+    {
+        mp.delete_object(v[i]);
+        v[i] = nullptr;
+    }
+    CHECK(mp.get_stats().num_blocks == 4);
+    CHECK(mp.get_stats().num_allocations == 64);
+    mp.reclaim_memory();
+    CHECK(mp.get_stats().num_blocks == 2);
+    CHECK(mp.get_stats().num_allocations == 64);
+    mp.delete_all();
+    CHECK(mp.get_stats().num_blocks == 2);
+    CHECK(mp.get_stats().num_allocations == 0);
+    for (size_t i = 0; i < 128; ++i)
+    {
+        v[i] = mp.new_object(1 << i);
+    }
+    CHECK(mp.get_stats().num_blocks == 4);
+    CHECK(mp.get_stats().num_allocations == 128);
+    for (size_t i = 0; i < 32; ++i)
+    {
+        mp.delete_object(v[i]);
+        v[i] = nullptr;
+    }
+    CHECK(mp.get_stats().num_blocks == 4);
+    CHECK(mp.get_stats().num_allocations == 96);
+    for (size_t i = 96; i < 128; ++i)
+    {
+        mp.delete_object(v[i]);
+        v[i] = nullptr;
+    }
+    CHECK(mp.get_stats().num_blocks == 4);
+    CHECK(mp.get_stats().num_allocations == 64);
+    mp.reclaim_memory();
+    CHECK(mp.get_stats().num_blocks == 2);
+    CHECK(mp.get_stats().num_allocations == 64);
+    mp.delete_all();
+    CHECK(mp.get_stats().num_blocks == 2);
+    CHECK(mp.get_stats().num_allocations == 0);
+    mp.reclaim_memory();
+    CHECK(mp.get_stats().num_blocks == 1);
+    CHECK(mp.get_stats().num_allocations == 0);
 }
 
 TEST_CASE("FixedMemoryPool iterate full block", "[fixedpool]")

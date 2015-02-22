@@ -8,8 +8,8 @@
 
 struct MemoryPoolStats
 {
-    size_t block_count = 0;
-    size_t allocation_count = 0;
+    size_t num_blocks = 0;
+    size_t num_allocations = 0;
 };
 
 
@@ -29,6 +29,8 @@ class MemoryPoolBlock
 {
     /// Index of the first free entry
     index_t free_head_index_;
+    /// The current number of allocated entries
+    index_t num_allocs_;
     const index_t entries_per_block_;
 
     MemoryPoolBlock(index_t entries_per_block);
@@ -55,7 +57,10 @@ public:
     /// Deletes the given pointer. The pointer must be owned by this block.
     void delete_object(const T * ptr);
 
-    /// Calls given function for all allocated entities
+    /// Delete all current allocations and reinitialise the block
+    void delete_all();
+
+    /// Calls given function for all allocated entries
     template <typename F>
     void for_each(const F func) const;
 
@@ -63,7 +68,7 @@ public:
     const T * memory_offset() const;
 
     /// Calculates the number of allocated entries
-    index_t count_allocations() const;
+    index_t num_allocations() const;
 };
 
 } // namespace detail
@@ -80,14 +85,22 @@ public:
     FixedMemoryPool(index_t max_entries);
     ~FixedMemoryPool();
 
+    /// Constructs a new object from the pool. Returns nullptr if there is no
+    /// available space.
     template<class... P>
     T * new_object(P&&... params);
 
+    /// Deletes the given pointer. The pointer must be owned by the pool.
     void delete_object(const T * ptr);
 
+    /// Delete all current allocations
+    void delete_all();
+
+    /// Calls the given function for all allocated entries
     template <typename F>
     void for_each(const F func) const;
 
+    /// Calculates memory pool stats
     MemoryPoolStats get_stats() const;
 
 private:
@@ -110,14 +123,25 @@ public:
     DynamicMemoryPool(index_t entries_per_block);
     ~DynamicMemoryPool();
 
+    /// Constructs a new object from the pool. Returns nullptr if there is no
+    /// available space.
     template<class... P>
     T * new_object(P&&... params);
 
+    /// Deletes the given pointer. The pointer must be owned by the pool.
     void delete_object(const T * ptr);
 
+    /// Delete all current allocations
+    void delete_all();
+
+    /// Reclaim unused memory pool blocks
+    void reclaim_memory();
+
+    /// Calls the given function for all allocated entries
     template <typename F>
     void for_each(const F func) const;
 
+    /// Calculates memory pool stats
     MemoryPoolStats get_stats() const;
 
 private:
@@ -196,6 +220,7 @@ void MemoryPoolBlock<T>::destroy(MemoryPoolBlock<T> * ptr)
 template <typename T>
 MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
     free_head_index_(0),
+    num_allocs_(0),
     entries_per_block_(entries_per_block)
 {
     index_t * indices = indices_begin();
@@ -208,7 +233,11 @@ MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
 template <typename T>
 MemoryPoolBlock<T>::~MemoryPoolBlock()
 {
-    assert(count_allocations() == 0);
+    // destruct any allocated objects
+    if (num_allocs_ && !std::is_trivially_destructible<T>::value)
+    {
+        for_each([](T * ptr){ ptr->~T(); });
+    }
 }
 
 template <typename T>
@@ -245,8 +274,12 @@ T * MemoryPoolBlock<T>::new_object(P&&... params)
         free_head_index_ = indices[index];
         // flag index as used
         indices[index] = index;
+        // get entry memory
         T * ptr = memory_begin() + index;
+        // construct the entry
         new (ptr) T(std::forward<P>(params)...);
+        // update count
+        ++num_allocs_;
         return ptr;
     }
     return nullptr;
@@ -260,23 +293,19 @@ void MemoryPoolBlock<T>::delete_object(const T * ptr)
         // assert that pointer is in range
         const T * begin = memory_begin();
         assert(ptr >= begin && ptr < (begin + entries_per_block_));
-
         // destruct this object
         ptr->~T();
-
         // get the index of this pointer
         const index_t index = ptr - begin;
-
         index_t * indices = indices_begin();
-
         // assert this index is allocated
         assert(indices[index] == index);
-
         // remove index from used list
         indices[index] = free_head_index_;
-
         // store index of next free entry in this pointer
         free_head_index_ = index;
+        // update count
+        --num_allocs_;
     }
 }
 
@@ -296,11 +325,26 @@ void MemoryPoolBlock<T>::for_each(const F func) const
 }
 
 template <typename T>
-index_t MemoryPoolBlock<T>::count_allocations() const
+void MemoryPoolBlock<T>::delete_all()
 {
-    index_t num_allocations = 0;
-    for_each([&num_allocations](const T *){ ++num_allocations; });
-    return num_allocations;
+    // destruct any allocated objects
+    if (num_allocs_ && !std::is_trivially_destructible<T>::value)
+    {
+        for_each([](T * ptr){ ptr->~T(); });
+    }
+    num_allocs_ = 0;
+    free_head_index_ = 0;
+    index_t * indices = indices_begin();
+    for (index_t i = 0; i < entries_per_block_; ++i)
+    {
+        indices[i] = i + 1;
+    }
+}
+
+template <typename T>
+index_t MemoryPoolBlock<T>::num_allocations() const
+{
+    return num_allocs_;
 }
 
 } // namespace detail
@@ -312,7 +356,7 @@ FixedMemoryPool<T>::FixedMemoryPool(index_t max_entries) :
 template <typename T>
 FixedMemoryPool<T>::~FixedMemoryPool()
 {
-    assert(get_stats().allocation_count == 0);
+    assert(get_stats().num_allocations == 0);
     Block::destroy(block_);
 }
 
@@ -330,6 +374,12 @@ void FixedMemoryPool<T>::delete_object(const T * ptr)
 }
 
 template <typename T>
+void FixedMemoryPool<T>::delete_all()
+{
+    block_->delete_all();
+}
+
+template <typename T>
 template <typename F>
 void FixedMemoryPool<T>::for_each(const F func) const
 {
@@ -340,9 +390,8 @@ template <typename T>
 MemoryPoolStats FixedMemoryPool<T>::get_stats() const
 {
     MemoryPoolStats stats;
-    stats.block_count = 1;
-    stats.allocation_count = 0;
-    block_->for_each([&stats](T *) { ++stats.allocation_count; });
+    stats.num_blocks = 1;
+    stats.num_allocations = block_->num_allocations();
     return stats;
 }
 
@@ -353,13 +402,15 @@ DynamicMemoryPool<T>::DynamicMemoryPool(index_t entries_per_block) :
     free_block_index_(0),
     entries_per_block_(entries_per_block)
 {
+    // always have one block available
     add_block();
 }
 
 template <typename T>
 DynamicMemoryPool<T>::~DynamicMemoryPool()
 {
-    assert(get_stats().allocation_count == 0);
+    // explicitly delete_object or delete_all before pool goes out of scope
+    assert(get_stats().num_allocations == 0);
 }
 
 template <typename T>
@@ -438,6 +489,74 @@ void DynamicMemoryPool<T>::delete_object(const T * ptr)
 }
 
 template <typename T>
+void DynamicMemoryPool<T>::delete_all()
+{
+    for (BlockInfo * p_info = block_info_,
+         * p_end = block_info_ + num_blocks_; p_info != p_end; ++p_info)
+    {
+        p_info->block_->delete_all();
+        p_info->num_free_ = entries_per_block_;
+    }
+    free_block_index_ = 0;
+}
+
+template <typename T>
+void DynamicMemoryPool<T>::reclaim_memory()
+{
+    // loop through all blocks shuffling the used blocks to the front and unused
+    // to the back.
+    index_t used_index = num_blocks_;
+    index_t empty_index = num_blocks_;
+    for (index_t index = 0; index < num_blocks_; ++index)
+    {
+        if (block_info_[index].num_free_ != entries_per_block_)
+        {
+            used_index = index;
+        }
+        else if (index < empty_index)
+        {
+            empty_index = index;
+        }
+
+        if (empty_index < used_index && used_index != num_blocks_)
+        {
+            std::swap(block_info_[empty_index], block_info_[used_index]);
+            used_index = empty_index;
+            ++empty_index;
+        }
+    }
+
+    // if no blocks are used, keep one around
+    if (used_index == num_blocks_)
+    {
+        used_index = 0;
+        free_block_index_ = 0;
+    }
+
+    // free remaining empty blocks
+    for (index_t index = used_index + 1; index != num_blocks_; ++index)
+    {
+        Block::destroy(block_info_[index].block_);
+    }
+
+    // resize the block info array
+    num_blocks_ = used_index + 1;
+    block_info_ = reinterpret_cast<BlockInfo*>(
+                realloc(block_info_, sizeof(BlockInfo) * num_blocks_));
+
+    // find the first free block index
+    free_block_index_ = num_blocks_;
+    for (index_t index = 0; index != num_blocks_; ++index)
+    {
+        if (block_info_[index].num_free_ != 0)
+        {
+            free_block_index_ = index;
+            break;
+        }
+    }
+}
+
+template <typename T>
 template <typename F>
 void DynamicMemoryPool<T>::for_each(const F func) const
 {
@@ -455,15 +574,14 @@ template <typename T>
 MemoryPoolStats DynamicMemoryPool<T>::get_stats() const
 {
     MemoryPoolStats stats;
-    stats.block_count = 0;
-    stats.allocation_count = 0;
+    stats.num_blocks = num_blocks_;
+    stats.num_allocations = 0;
     for (const BlockInfo * p_info = block_info_,
          * p_end = block_info_ + num_blocks_; p_info != p_end; ++p_info)
     {
-        ++stats.block_count;
         if (p_info->num_free_ < entries_per_block_)
         {
-            stats.allocation_count += p_info->block_->count_allocations();
+            stats.num_allocations += p_info->block_->num_allocations();
         }
     }
     return stats;
