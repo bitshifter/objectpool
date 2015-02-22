@@ -111,16 +111,16 @@ public:
 #define HEAP_BENCH_TEST(run, size, entries) \
     _CONFIG_BENCH_TEST(SizedHeapAlloc, heap, run, size, entries)
 
-POOL_BENCH_TEST(alloc_free, 16, 1000);
-HEAP_BENCH_TEST(alloc_free, 16, 1000);
-POOL_BENCH_TEST(alloc_free, 128, 1000);
-HEAP_BENCH_TEST(alloc_free, 128, 1000);
-POOL_BENCH_TEST(alloc_free, 512, 1000);
-HEAP_BENCH_TEST(alloc_free, 512, 1000);
+POOL_BENCH_TEST(alloc_free, 16, 1000)
+HEAP_BENCH_TEST(alloc_free, 16, 1000)
+POOL_BENCH_TEST(alloc_free, 128, 1000)
+HEAP_BENCH_TEST(alloc_free, 128, 1000)
+POOL_BENCH_TEST(alloc_free, 512, 1000)
+HEAP_BENCH_TEST(alloc_free, 512, 1000)
 
-POOL_BENCH_TEST(alloc_memset_free, 16, 1000);
-HEAP_BENCH_TEST(alloc_memset_free, 16, 1000);
-POOL_BENCH_TEST(alloc_memset_free, 128, 1000);
-HEAP_BENCH_TEST(alloc_memset_free, 128, 1000);
-POOL_BENCH_TEST(alloc_memset_free, 512, 1000);
-HEAP_BENCH_TEST(alloc_memset_free, 512, 1000);
+POOL_BENCH_TEST(alloc_memset_free, 16, 1000)
+HEAP_BENCH_TEST(alloc_memset_free, 16, 1000)
+POOL_BENCH_TEST(alloc_memset_free, 128, 1000)
+HEAP_BENCH_TEST(alloc_memset_free, 128, 1000)
+POOL_BENCH_TEST(alloc_memset_free, 512, 1000)
+HEAP_BENCH_TEST(alloc_memset_free, 512, 1000)

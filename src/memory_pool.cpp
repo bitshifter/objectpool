@@ -68,11 +68,14 @@ inline uint32_t log2(uint32_t n)
 
 #include "catch.hpp"
 
+namespace tests
+{
+
 using detail::is_aligned_to;
 
-TEST_CASE("Single new and delete", "[allocation]")
+template <typename PoolT>
+void singleNewAndDelete(PoolT & mp)
 {
-    FixedMemoryPool<uint32_t> mp(64);
     uint32_t * p = mp.new_object(0xaabbccdd);
     REQUIRE(p != nullptr);
     CHECK(is_aligned_to(p, 4));
@@ -82,9 +85,9 @@ TEST_CASE("Single new and delete", "[allocation]")
     mp.delete_object(p);
 }
 
-TEST_CASE("Double new and delete", "[allocation]")
+template <typename PoolT>
+void doubleNewAndDelete(PoolT & mp)
 {
-    FixedMemoryPool<uint32_t> mp(64);
     uint32_t * p1 = mp.new_object(0x11223344);
     REQUIRE(p1 != nullptr);
     CHECK(is_aligned_to(p1, 4));
@@ -98,29 +101,31 @@ TEST_CASE("Double new and delete", "[allocation]")
     mp.delete_object(p2);
 }
 
-TEST_CASE("Block fill and free", "[allocation]")
+template <typename PoolT>
+void blockFillAndFree(PoolT & mp, size_t size)
 {
-    FixedMemoryPool<uint32_t> mp(64);
     std::vector<uint32_t *> v;
-    for (size_t i = 0; i < 64; ++i)
+    for (size_t i = 0; i < size; ++i)
     {
         uint32_t * p = mp.new_object(1 << i);
         REQUIRE(p != nullptr);
         CHECK(*p == 1u << i);
         v.push_back(p);
     }
-    for (auto p : v)
+
+    for (size_t i = 0; i < size; ++i)
     {
-        mp.delete_object(p);
+        mp.delete_object(v[i]);
     }
 }
 
-TEST_CASE("Iterate full blocks", "[iteration]")
+template <typename PoolT>
+void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_blocks)
 {
-    FixedMemoryPool<uint32_t> mp(64);
+    const size_t half_size = size >> 1;
     std::vector<uint32_t *> v;
     size_t i;
-    for (i = 0; i < 64; ++i)
+    for (i = 0; i < size; ++i)
     {
         uint32_t * p = mp.new_object(1 << i);
         REQUIRE(p != nullptr);
@@ -130,8 +135,8 @@ TEST_CASE("Iterate full blocks", "[iteration]")
 
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == 64u);
-        CHECK(stats.block_count == 1u);
+        CHECK(stats.allocation_count == size);
+        CHECK(stats.block_count == expected_blocks);
     }
 
     // check values
@@ -143,7 +148,7 @@ TEST_CASE("Iterate full blocks", "[iteration]")
     }
 
     // delete every second entry
-    for (i = 1; i < 64; i += 2)
+    for (i = 1; i < size; i += 2)
     {
         uint32_t * p = v[i];
         v[i] = nullptr;
@@ -153,8 +158,8 @@ TEST_CASE("Iterate full blocks", "[iteration]")
     // check allocation count is reduced but block count is the same
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == 32u);
-        CHECK(stats.block_count == 1u);
+        CHECK(stats.allocation_count == half_size);
+        CHECK(stats.block_count == expected_blocks);
     }
 
     // check remaining objects
@@ -165,14 +170,14 @@ TEST_CASE("Iterate full blocks", "[iteration]")
         i += 2;
     });
     /*
-       for (i = 0; i < 64; i += 2)
+       for (i = 0; i < size; i += 2)
        {
        CHECK(*v[i] == 1u << i);
        }
        */
 
     // allocate 16 new entries (fill first block)
-    for (i = 1; i < 32; i += 2)
+    for (i = 1; i < half_size; i += 2)
     {
         CHECK(v[i] == nullptr);
         v[i] = mp.new_object(1 << i);
@@ -181,12 +186,12 @@ TEST_CASE("Iterate full blocks", "[iteration]")
     // check allocation and block count
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == 48u);
-        CHECK(stats.block_count == 1u);
+        CHECK(stats.allocation_count == size - (half_size / 2));
+        CHECK(stats.block_count == expected_blocks);
     }
 
     // delete objects in second block
-    for (i = 32; i < 64; ++i)
+    for (i = half_size; i < size; ++i)
     {
         uint32_t * p = v[i];
         v[i] = nullptr;
@@ -196,8 +201,8 @@ TEST_CASE("Iterate full blocks", "[iteration]")
     // check that the empty block was freed
     {
         auto stats = mp.get_stats();
-        CHECK(stats.allocation_count == 32u);
-        CHECK(stats.block_count == 1u);
+        CHECK(stats.allocation_count == half_size);
+        CHECK(stats.block_count == expected_blocks);
     }
 
     for (auto p : v)
@@ -208,8 +213,70 @@ TEST_CASE("Iterate full blocks", "[iteration]")
     {
         auto stats = mp.get_stats();
         CHECK(stats.allocation_count == 0u);
-        CHECK(stats.block_count == 1u);
+        CHECK(stats.block_count == expected_blocks);
     }
 }
+
+TEST_CASE("FixedMemoryPool single new and delete", "[fixedpool]")
+{
+    FixedMemoryPool<uint32_t> mp(64);
+    singleNewAndDelete(mp);
+}
+
+TEST_CASE("DynamicMemoryPool single new and delete", "[dynamicpool]")
+{
+    DynamicMemoryPool<uint32_t> mp(64);
+    singleNewAndDelete(mp);
+}
+
+TEST_CASE("FixedMemoryPool double new and delete", "[fixedpool]")
+{
+    FixedMemoryPool<uint32_t> mp(64);
+    doubleNewAndDelete(mp);
+}
+
+TEST_CASE("Dynamic pool double new and delete", "[dynamicpool]")
+{
+    DynamicMemoryPool<uint32_t> mp(64);
+    doubleNewAndDelete(mp);
+}
+
+TEST_CASE("FixedMemoryPool block fill and free", "[fixedpool]")
+{
+    FixedMemoryPool<uint32_t> mp(64);
+    blockFillAndFree(mp, 64);
+}
+
+TEST_CASE("DynamicMemoryPool block fill and free", "[dynamicpool]")
+{
+    DynamicMemoryPool<uint32_t> mp(64);
+    blockFillAndFree(mp, 64);
+}
+
+TEST_CASE("DynamicMemoryPool double block fill and free", "[dynamicpool]")
+{
+    DynamicMemoryPool<uint32_t> mp(64);
+    blockFillAndFree(mp, 128);
+}
+
+TEST_CASE("FixedMemoryPool iterate full block", "[fixedpool]")
+{
+    FixedMemoryPool<uint32_t> mp(64);
+    iterateFullBlocks(mp, 64, 1);
+}
+
+TEST_CASE("DynamicMemoryPool iterate full block", "[dynamicpool]")
+{
+    DynamicMemoryPool<uint32_t> mp(64);
+    iterateFullBlocks(mp, 64, 1);
+}
+
+TEST_CASE("DynamicMemoryPool iterate double full blocks", "[dynamicpool]")
+{
+    DynamicMemoryPool<uint32_t> mp(64);
+    iterateFullBlocks(mp, 128, 2);
+}
+
+} // namespace tests
 
 #endif // UNIT_TESTS

@@ -12,13 +12,22 @@ struct MemoryPoolStats
     size_t allocation_count = 0;
 };
 
+
 namespace detail
 {
+/// Default index type, this dictates the maximum number of entries in a
+/// single pool block.
 typedef uint32_t index_t;
 
+/// Base memory pool block. This contains a list of indices of free and used
+/// entries and the storage for the entries themselves. Everything is allocated
+/// in a single allocation in the static create function, and indices_begin()
+/// and memory_begin() methods will return pointers offset from this for their
+/// respective data.
 template <typename T>
 class MemoryPoolBlock
 {
+    /// Index of the first free entry
     index_t free_head_index_;
     const index_t entries_per_block_;
 
@@ -29,35 +38,41 @@ class MemoryPoolBlock
     MemoryPoolBlock & operator=(const MemoryPoolBlock &) = delete;
 
     /// returns start of indices
-    index_t * indices_begin();
+    index_t * indices_begin() const;
 
     /// returns start of pool memory
-    T * memory_begin();
+    T * memory_begin() const;
 
 public:
     static MemoryPoolBlock<T> * create(uint32_t entries_per_block);
     static void destroy(MemoryPoolBlock<T> * ptr);
 
+    /// Allocates a new object from this block. Returns nullptr if there is
+    /// no available space.
     template <class... P>
     T * new_object(P&&... params);
 
+    /// Deletes the given pointer. The pointer must be owned by this block.
     void delete_object(const T * ptr);
 
+    /// Calls given function for all allocated entities
     template <typename F>
-    void for_each(const F func);
+    void for_each(const F func) const;
+
+    /// returns start of pool memory
+    const T * memory_offset() const;
+
+    /// Calculates the number of allocated entries
+    index_t count_allocations() const;
 };
 
 } // namespace detail
 
-
+/// FixedMemoryPool contains a single MemoryPoolBlock, it will not grow
+/// beyond the max number of entries given at construction time.
 template <typename T>
 class FixedMemoryPool
 {
-    detail::MemoryPoolBlock<T> * block_;
-
-    FixedMemoryPool(const FixedMemoryPool &) = delete;
-    FixedMemoryPool & operator=(const FixedMemoryPool &) = delete;
-
 public:
     typedef detail::index_t index_t;
 
@@ -73,8 +88,66 @@ public:
     void for_each(const F func) const;
 
     MemoryPoolStats get_stats() const;
+
+private:
+    typedef detail::MemoryPoolBlock<T> Block;
+    Block * block_;
+
+    FixedMemoryPool(const FixedMemoryPool &) = delete;
+    FixedMemoryPool & operator=(const FixedMemoryPool &) = delete;
 };
 
+
+/// DynamicMemoryPool contains a dynamic array of MemoryPoolBlocks.
+template <typename T>
+class DynamicMemoryPool
+{
+public:
+    typedef detail::index_t index_t;
+
+    DynamicMemoryPool(index_t entries_per_block);
+    ~DynamicMemoryPool();
+
+    template<class... P>
+    T * new_object(P&&... params);
+
+    void delete_object(const T * ptr);
+
+    template <typename F>
+    void for_each(const F func) const;
+
+    MemoryPoolStats get_stats() const;
+
+private:
+    typedef detail::MemoryPoolBlock<T> Block;
+
+    /// The BlockInfo struct keeps regularly accessed block information
+    /// packed together for better memory locality.
+    struct BlockInfo
+    {
+        /// cache the number of free entries for this block
+        index_t num_free_;
+        /// cache the offset of entries memory from the start of the block
+        const T * offset_;
+        /// pointer to the block itself
+        Block * block_;
+    };
+
+    /// storage for block info records
+    BlockInfo * block_info_;
+    /// number of blocks allocated
+    index_t num_blocks_;
+    /// index of the first block info with space
+    index_t free_block_index_;
+    /// the number of entries in each block
+    const index_t entries_per_block_;
+
+    /// Adds a new block and updates the free_block_index.
+    BlockInfo * add_block();
+
+    DynamicMemoryPool(const DynamicMemoryPool &) = delete;
+    DynamicMemoryPool & operator=(const DynamicMemoryPool &) = delete;
+};
 
 namespace detail
 {
@@ -133,19 +206,26 @@ MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
 template <typename T>
 MemoryPoolBlock<T>::~MemoryPoolBlock()
 {
-    // TODO: assert empty
+    assert(count_allocations() == 0);
 }
 
 template <typename T>
-index_t * MemoryPoolBlock<T>::indices_begin()
+index_t * MemoryPoolBlock<T>::indices_begin() const
 {
-    return reinterpret_cast<index_t*>(this + 1);
+    return reinterpret_cast<index_t*>(
+                const_cast<MemoryPoolBlock<T>*>(this + 1));
 }
 
 template <typename T>
-T * MemoryPoolBlock<T>::memory_begin()
+T * MemoryPoolBlock<T>::memory_begin() const
 {
     return reinterpret_cast<T*>(indices_begin() + entries_per_block_);
+}
+
+template <typename T>
+const T * MemoryPoolBlock<T>::memory_offset() const
+{
+    return memory_begin();
 }
 
 template <typename T>
@@ -176,13 +256,15 @@ void MemoryPoolBlock<T>::delete_object(const T * ptr)
     if (ptr)
     {
         // assert that pointer is in range
-        assert(ptr >= memory_begin() && ptr < (memory_begin() + entries_per_block_));
+        const T * begin = memory_begin();
+        const T * end = begin + entries_per_block_;
+        assert(ptr >= begin && ptr < end);
 
         // destruct this object
         ptr->~T();
 
         // get the index of this pointer
-        const index_t index = ptr - memory_begin();
+        const index_t index = ptr - begin;
 
         index_t * indices = indices_begin();
 
@@ -199,7 +281,7 @@ void MemoryPoolBlock<T>::delete_object(const T * ptr)
 
 template <typename T>
 template <typename F>
-void MemoryPoolBlock<T>::for_each(const F func)
+void MemoryPoolBlock<T>::for_each(const F func) const
 {
     const index_t * indices = indices_begin();
     T * first = memory_begin();
@@ -212,16 +294,25 @@ void MemoryPoolBlock<T>::for_each(const F func)
     }
 }
 
+template <typename T>
+index_t MemoryPoolBlock<T>::count_allocations() const
+{
+    index_t num_allocations = 0;
+    for_each([&num_allocations](const T *){ ++num_allocations; });
+    return num_allocations;
+}
+
 } // namespace detail
 
 template <typename T>
 FixedMemoryPool<T>::FixedMemoryPool(index_t max_entries) :
-    block_(detail::MemoryPoolBlock<T>::create(max_entries)) {}
+    block_(Block::create(max_entries)) {}
 
 template <typename T>
 FixedMemoryPool<T>::~FixedMemoryPool()
 {
-    detail::MemoryPoolBlock<T>::destroy(block_);
+    assert(get_stats().allocation_count == 0);
+    Block::destroy(block_);
 }
 
 template <typename T>
@@ -251,6 +342,129 @@ MemoryPoolStats FixedMemoryPool<T>::get_stats() const
     stats.block_count = 1;
     stats.allocation_count = 0;
     block_->for_each([&stats](T *) { ++stats.allocation_count; });
+    return stats;
+}
+
+template <typename T>
+DynamicMemoryPool<T>::DynamicMemoryPool(index_t entries_per_block) :
+    block_info_(nullptr),
+    num_blocks_(0),
+    free_block_index_(0),
+    entries_per_block_(entries_per_block)
+{
+    add_block();
+}
+
+template <typename T>
+DynamicMemoryPool<T>::~DynamicMemoryPool()
+{
+    assert(get_stats().allocation_count == 0);
+}
+
+template <typename T>
+typename DynamicMemoryPool<T>::BlockInfo * DynamicMemoryPool<T>::add_block()
+{
+    assert(free_block_index_ == num_blocks_);
+    if (Block * block = Block::create(entries_per_block_))
+    {
+        // update the number of blocks
+        num_blocks_++;
+        // allocate space for new block info
+        block_info_ = reinterpret_cast<BlockInfo*>(
+                    realloc(block_info_, num_blocks_ * sizeof(BlockInfo)));
+        // initialise the new block info structure
+        BlockInfo & info = block_info_[free_block_index_];
+        info.num_free_ = entries_per_block_;
+        info.offset_ = const_cast<const Block*>(block)->memory_offset();
+        info.block_ = block;
+        return &info;
+    }
+    return nullptr;
+}
+
+template <typename T>
+template <typename... P>
+T * DynamicMemoryPool<T>::new_object(P&&... params)
+{
+    assert(free_block_index_ < num_blocks_);
+
+    // search for a block with free space
+    BlockInfo * p_info = block_info_ + free_block_index_;
+    for (const BlockInfo * p_end = block_info_ + num_blocks_;
+         p_info != p_end && p_info->num_free_ == 0; ++p_info) {}
+
+    // update the free block index
+    free_block_index_ = p_info - block_info_;
+
+    // if no free blocks found then create a new one
+    if (free_block_index_ == num_blocks_)
+    {
+        p_info = add_block();
+        if (!p_info)
+        {
+            return nullptr;
+        }
+    }
+
+    // construct the new object
+    T * ptr = p_info->block_->new_object(std::forward<P>(params)...);
+    assert(ptr != nullptr);
+    // update num free count
+    --p_info->num_free_;
+    return ptr;
+}
+
+template <typename T>
+void DynamicMemoryPool<T>::delete_object(const T * ptr)
+{
+    BlockInfo * p_info = block_info_;
+    for (auto end = p_info + num_blocks_; p_info != end; ++p_info)
+    {
+        const T * p_entries_begin = p_info->offset_;
+        const T * p_entries_end = p_entries_begin + entries_per_block_;
+        if (ptr >= p_entries_begin && ptr < p_entries_end)
+        {
+            p_info->block_->delete_object(ptr);
+            ++p_info->num_free_;
+            const index_t free_block = p_info - block_info_;
+            if (free_block < free_block_index_)
+            {
+                free_block_index_ = free_block;
+            }
+            return;
+        }
+    }
+}
+
+template <typename T>
+template <typename F>
+void DynamicMemoryPool<T>::for_each(const F func) const
+{
+    for (const BlockInfo * p_info = block_info_,
+         * p_end = block_info_ + num_blocks_; p_info != p_end; ++p_info)
+    {
+        if (p_info->num_free_ < entries_per_block_)
+        {
+            p_info->block_->for_each(func);
+        }
+    }
+}
+
+template <typename T>
+MemoryPoolStats DynamicMemoryPool<T>::get_stats() const
+{
+    MemoryPoolStats stats;
+    stats.block_count = 0;
+    stats.allocation_count = 0;
+    for (const BlockInfo * p_info = block_info_,
+         * p_end = block_info_ + num_blocks_; p_info != p_end; ++p_info)
+    {
+        ++stats.block_count;
+        if (p_info->num_free_ < entries_per_block_)
+        {
+            stats.allocation_count += p_info->block_->count_allocations();
+        }
+    }
     return stats;
 }
 
