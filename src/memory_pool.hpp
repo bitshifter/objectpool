@@ -29,8 +29,6 @@ class MemoryPoolBlock
 {
     /// Index of the first free entry
     index_t free_head_index_;
-    /// The current number of allocated entries
-    index_t num_allocs_;
     const index_t entries_per_block_;
 
     MemoryPoolBlock(index_t entries_per_block);
@@ -46,7 +44,7 @@ class MemoryPoolBlock
     T * memory_begin() const;
 
 public:
-    static MemoryPoolBlock<T> * create(uint32_t entries_per_block);
+    static MemoryPoolBlock<T> * create(index_t entries_per_block);
     static void destroy(MemoryPoolBlock<T> * ptr);
 
     /// Allocates a new object from this block. Returns nullptr if there is
@@ -220,7 +218,6 @@ void MemoryPoolBlock<T>::destroy(MemoryPoolBlock<T> * ptr)
 template <typename T>
 MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
     free_head_index_(0),
-    num_allocs_(0),
     entries_per_block_(entries_per_block)
 {
     index_t * indices = indices_begin();
@@ -234,7 +231,7 @@ template <typename T>
 MemoryPoolBlock<T>::~MemoryPoolBlock()
 {
     // destruct any allocated objects
-    if (num_allocs_ && !std::is_trivially_destructible<T>::value)
+    if (!std::is_trivially_destructible<T>::value)
     {
         for_each([](T * ptr){ ptr->~T(); });
     }
@@ -278,8 +275,6 @@ T * MemoryPoolBlock<T>::new_object(P&&... params)
         T * ptr = memory_begin() + index;
         // construct the entry
         new (ptr) T(std::forward<P>(params)...);
-        // update count
-        ++num_allocs_;
         return ptr;
     }
     return nullptr;
@@ -304,8 +299,6 @@ void MemoryPoolBlock<T>::delete_object(const T * ptr)
         indices[index] = free_head_index_;
         // store index of next free entry in this pointer
         free_head_index_ = index;
-        // update count
-        --num_allocs_;
     }
 }
 
@@ -328,11 +321,10 @@ template <typename T>
 void MemoryPoolBlock<T>::delete_all()
 {
     // destruct any allocated objects
-    if (num_allocs_ && !std::is_trivially_destructible<T>::value)
+    if (!std::is_trivially_destructible<T>::value)
     {
         for_each([](T * ptr){ ptr->~T(); });
     }
-    num_allocs_ = 0;
     free_head_index_ = 0;
     index_t * indices = indices_begin();
     for (index_t i = 0; i < entries_per_block_; ++i)
@@ -344,7 +336,9 @@ void MemoryPoolBlock<T>::delete_all()
 template <typename T>
 index_t MemoryPoolBlock<T>::num_allocations() const
 {
-    return num_allocs_;
+    index_t num_allocs = 0;
+    for_each([&num_allocs](const T *){ ++num_allocs; });
+    return num_allocs;
 }
 
 } // namespace detail
