@@ -75,6 +75,7 @@ class FixedMemoryPool
 {
 public:
     typedef detail::index_t index_t;
+    typedef T value_type;
 
     FixedMemoryPool(index_t max_entries);
     ~FixedMemoryPool();
@@ -104,6 +105,7 @@ class DynamicMemoryPool
 {
 public:
     typedef detail::index_t index_t;
+    typedef T value_type;
 
     DynamicMemoryPool(index_t entries_per_block);
     ~DynamicMemoryPool();
@@ -257,8 +259,7 @@ void MemoryPoolBlock<T>::delete_object(const T * ptr)
     {
         // assert that pointer is in range
         const T * begin = memory_begin();
-        const T * end = begin + entries_per_block_;
-        assert(ptr >= begin && ptr < end);
+        assert(ptr >= begin && ptr < (begin + entries_per_block_));
 
         // destruct this object
         ptr->~T();

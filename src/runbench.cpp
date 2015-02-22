@@ -35,16 +35,16 @@ void alloc_memset_free(T& pool)
 template <size_t N>
 struct Sized { char c[N]; };
 
-template <size_t N>
+template <typename PoolT>
 class SizedPoolAlloc
 {
-    typedef Sized<N> value_type;
-    FixedMemoryPool<value_type> pool;
+    typedef typename PoolT::value_type value_type;
+    PoolT pool;
     std::vector<value_type *> ptr;
 public:
-    SizedPoolAlloc(size_t count) :
-        pool(count),
-        ptr(count, nullptr) {}
+    SizedPoolAlloc(size_t block_size, size_t allocs) :
+        pool(block_size),
+        ptr(allocs, nullptr) {}
     void alloc(size_t i) {
         ptr[i] = pool.new_object();
     }
@@ -74,8 +74,8 @@ class SizedHeapAlloc
     typedef Sized<N> value_type;
     std::vector<value_type *> ptr;
 public:
-    SizedHeapAlloc(size_t count) :
-        ptr(count, nullptr) {}
+    SizedHeapAlloc(size_t /*block_size*/, size_t allocs) :
+        ptr(allocs, nullptr) {}
     void alloc(size_t i) {
         ptr[i] = new value_type;
     }
@@ -100,27 +100,51 @@ public:
 #endif // BENCH_HEAP_ALLOC
 
 // I am a bad person. Bad and lazy.
-#define _CONFIG_BENCH_TEST(type, prefix, run, size, entries) \
-    static type<size> g_ ## prefix ## _ ## size ## x ## entries ## run ## _(entries); \
-    BENCH_TEST_BYTES(prefix ## _ ## run ## _ ## size ## x ## entries, size * entries) { \
-        run(g_ ## prefix ## _ ## size ## x ## entries ## run ## _); \
+#define _CONFIG_BENCH_TEST(type, prefix, run, value_size, block_size, allocs) \
+    static type g_ ## prefix ## _ ## value_size ## x ## block_size ## run ## _(block_size, allocs); \
+    BENCH_TEST_BYTES(prefix ## _ ## run ## _ ## value_size ## x ## block_size, allocs * value_size) { \
+        run(g_ ## prefix ## _ ## value_size ## x ## block_size ## run ## _); \
     }
 
-#define POOL_BENCH_TEST(run, size, entries) \
-    _CONFIG_BENCH_TEST(SizedPoolAlloc, pool, run, size, entries)
-#define HEAP_BENCH_TEST(run, size, entries) \
-    _CONFIG_BENCH_TEST(SizedHeapAlloc, heap, run, size, entries)
+#define FIXED_POOL_BENCH_TEST(run, value_size, block_size) \
+    _CONFIG_BENCH_TEST(SizedPoolAlloc<FixedMemoryPool<Sized<value_size>>>, fixed_pool, run, value_size, block_size, block_size)
+#define DYNAMIC_POOL_BENCH_TEST(run, value_size, block_size, allocs) \
+    _CONFIG_BENCH_TEST(SizedPoolAlloc<DynamicMemoryPool<Sized<value_size>>>, dynamic_pool, run, value_size, block_size, allocs)
+#define HEAP_BENCH_TEST(run, value_size, block_size) \
+    _CONFIG_BENCH_TEST(SizedHeapAlloc<value_size>, heap, run, value_size, block_size, block_size)
 
-POOL_BENCH_TEST(alloc_free, 16, 1000)
+FIXED_POOL_BENCH_TEST(alloc_free, 16, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 64, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 256, 1000)
 HEAP_BENCH_TEST(alloc_free, 16, 1000)
-POOL_BENCH_TEST(alloc_free, 128, 1000)
+
+FIXED_POOL_BENCH_TEST(alloc_free, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 128, 64, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 128, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 128, 256, 1000)
 HEAP_BENCH_TEST(alloc_free, 128, 1000)
-POOL_BENCH_TEST(alloc_free, 512, 1000)
+
+FIXED_POOL_BENCH_TEST(alloc_free, 512, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 512, 64, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 512, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_free, 512, 256, 1000)
 HEAP_BENCH_TEST(alloc_free, 512, 1000)
 
-POOL_BENCH_TEST(alloc_memset_free, 16, 1000)
+FIXED_POOL_BENCH_TEST(alloc_memset_free, 16, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 16, 64, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 16, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 16, 256, 1000)
 HEAP_BENCH_TEST(alloc_memset_free, 16, 1000)
-POOL_BENCH_TEST(alloc_memset_free, 128, 1000)
+
+FIXED_POOL_BENCH_TEST(alloc_memset_free, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 128, 64, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 128, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 128, 256, 1000)
 HEAP_BENCH_TEST(alloc_memset_free, 128, 1000)
-POOL_BENCH_TEST(alloc_memset_free, 512, 1000)
+
+FIXED_POOL_BENCH_TEST(alloc_memset_free, 512, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 64, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 128, 1000)
+DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 256, 1000)
 HEAP_BENCH_TEST(alloc_memset_free, 512, 1000)
