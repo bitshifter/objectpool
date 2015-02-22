@@ -101,9 +101,9 @@ public:
 
 // I am a bad person. Bad and lazy.
 #define _CONFIG_BENCH_TEST(type, prefix, run, value_size, block_size, allocs) \
-    static type g_ ## prefix ## _ ## value_size ## x ## block_size ## run ## _(block_size, allocs); \
-    BENCH_TEST_BYTES(prefix ## _ ## run ## _ ## value_size ## x ## block_size, allocs * value_size) { \
-        run(g_ ## prefix ## _ ## value_size ## x ## block_size ## run ## _); \
+    static type g_ ## prefix ## _ ## value_size ## x ## block_size ## x ## allocs ## run ## _(block_size, allocs); \
+    BENCH_TEST_BYTES(prefix ## _ ## run ## _ ## value_size ## x ## block_size ## x ## allocs, allocs * value_size) { \
+        run(g_ ## prefix ## _ ## value_size ## x ## block_size ## x ## allocs ## run ## _); \
     }
 
 #define FIXED_POOL_BENCH_TEST(run, value_size, block_size) \
