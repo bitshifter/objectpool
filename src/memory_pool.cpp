@@ -263,26 +263,26 @@ TEST_CASE("DynamicMemoryPool delete all", "[dynamicpool")
 {
     std::vector<uint32_t*> v(128, nullptr);
     DynamicMemoryPool<uint32_t> mp(32);
-    CHECK(mp.get_stats().num_blocks == 1);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 1u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     mp.delete_all();
-    CHECK(mp.get_stats().num_blocks == 1);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 1u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     mp.reclaim_memory();
-    CHECK(mp.get_stats().num_blocks == 1);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 1u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     for (size_t i = 0; i < 64; ++i)
     {
         mp.new_object(1 << i);
     }
-    CHECK(mp.get_stats().num_blocks == 2);
-    CHECK(mp.get_stats().num_allocations == 64);
+    CHECK(mp.get_stats().num_blocks == 2u);
+    CHECK(mp.get_stats().num_allocations == 64u);
     mp.delete_all();
-    CHECK(mp.get_stats().num_blocks == 2);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 2u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     mp.reclaim_memory();
-    CHECK(mp.get_stats().num_blocks == 1);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 1u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     for (size_t i = 0; i < 64; ++i)
     {
         v[i] = mp.new_object(1 << i);
@@ -293,59 +293,59 @@ TEST_CASE("DynamicMemoryPool delete all", "[dynamicpool")
         v[i] = nullptr;
     }
     mp.reclaim_memory();
-    CHECK(mp.get_stats().num_blocks == 1);
-    CHECK(mp.get_stats().num_allocations == 32);
+    CHECK(mp.get_stats().num_blocks == 1u);
+    CHECK(mp.get_stats().num_allocations == 32u);
     mp.delete_all();
-    CHECK(mp.get_stats().num_blocks == 1);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 1u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     for (size_t i = 0; i < 128; ++i)
     {
         v[i] = mp.new_object(1 << i);
     }
-    CHECK(mp.get_stats().num_blocks == 4);
-    CHECK(mp.get_stats().num_allocations == 128);
+    CHECK(mp.get_stats().num_blocks == 4u);
+    CHECK(mp.get_stats().num_allocations == 128u);
     for (size_t i = 32; i < 96; ++i)
     {
         mp.delete_object(v[i]);
         v[i] = nullptr;
     }
-    CHECK(mp.get_stats().num_blocks == 4);
-    CHECK(mp.get_stats().num_allocations == 64);
+    CHECK(mp.get_stats().num_blocks == 4u);
+    CHECK(mp.get_stats().num_allocations == 64u);
     mp.reclaim_memory();
-    CHECK(mp.get_stats().num_blocks == 2);
-    CHECK(mp.get_stats().num_allocations == 64);
+    CHECK(mp.get_stats().num_blocks == 2u);
+    CHECK(mp.get_stats().num_allocations == 64u);
     mp.delete_all();
-    CHECK(mp.get_stats().num_blocks == 2);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 2u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     for (size_t i = 0; i < 128; ++i)
     {
         v[i] = mp.new_object(1 << i);
     }
-    CHECK(mp.get_stats().num_blocks == 4);
-    CHECK(mp.get_stats().num_allocations == 128);
+    CHECK(mp.get_stats().num_blocks == 4u);
+    CHECK(mp.get_stats().num_allocations == 128u);
     for (size_t i = 0; i < 32; ++i)
     {
         mp.delete_object(v[i]);
         v[i] = nullptr;
     }
-    CHECK(mp.get_stats().num_blocks == 4);
-    CHECK(mp.get_stats().num_allocations == 96);
+    CHECK(mp.get_stats().num_blocks == 4u);
+    CHECK(mp.get_stats().num_allocations == 96u);
     for (size_t i = 96; i < 128; ++i)
     {
         mp.delete_object(v[i]);
         v[i] = nullptr;
     }
-    CHECK(mp.get_stats().num_blocks == 4);
-    CHECK(mp.get_stats().num_allocations == 64);
+    CHECK(mp.get_stats().num_blocks == 4u);
+    CHECK(mp.get_stats().num_allocations == 64u);
     mp.reclaim_memory();
-    CHECK(mp.get_stats().num_blocks == 2);
-    CHECK(mp.get_stats().num_allocations == 64);
+    CHECK(mp.get_stats().num_blocks == 2u);
+    CHECK(mp.get_stats().num_allocations == 64u);
     mp.delete_all();
-    CHECK(mp.get_stats().num_blocks == 2);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 2u);
+    CHECK(mp.get_stats().num_allocations == 0u);
     mp.reclaim_memory();
-    CHECK(mp.get_stats().num_blocks == 1);
-    CHECK(mp.get_stats().num_allocations == 0);
+    CHECK(mp.get_stats().num_blocks == 1u);
+    CHECK(mp.get_stats().num_allocations == 0u);
 }
 
 TEST_CASE("FixedMemoryPool iterate full block", "[fixedpool]")

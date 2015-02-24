@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cinttypes>
 #include <iostream>
+#include <vector>
 
 namespace stats
 {
@@ -185,7 +186,7 @@ public:
             for (auto & p : samples)
             {
                 bench_n(n, func);
-                p = ns_per_iter().count();
+                p = static_cast<double>(ns_per_iter().count());
             }
 
             stats::winsorize(samples, 5.0);
@@ -194,7 +195,7 @@ public:
             for (auto & p : samples)
             {
                 bench_n(n * 5, func);
-                p = ns_per_iter().count();
+                p = static_cast<double>(ns_per_iter().count());
             }
 
             stats::winsorize(samples, 5.0);
@@ -227,6 +228,10 @@ struct BenchSamples
     uint64_t mb_s = 0;
 };
 
+#if _MSC_VER
+#define snprintf _snprintf_s
+#endif
+
 std::string fmt_bench_samples(const BenchSamples & bs)
 {
     char buffer[1024] = {0};
@@ -248,6 +253,11 @@ std::string fmt_bench_samples(const BenchSamples & bs)
     return buffer;
 }
 
+#if _MSC_VER
+#undef snprintf
+#endif
+
+
 BenchSamples benchmark(BenchFunc bench_func, uint64_t bench_bytes)
 {
     BenchSamples bs;
@@ -255,7 +265,7 @@ BenchSamples benchmark(BenchFunc bench_func, uint64_t bench_bytes)
 
     bs.ns_iter_summ = b.auto_bench(bench_func);
 
-    auto ns_iter = std::max<uint64_t>(bs.ns_iter_summ.median, 1);
+    auto ns_iter = static_cast<uint64_t>(std::max(bs.ns_iter_summ.median, 1.0));
     auto iter_s = 1000000000 / ns_iter;
     bs.mb_s = (bench_bytes * iter_s) / 1000000;
 

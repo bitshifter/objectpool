@@ -188,9 +188,14 @@ MemoryPoolBlock<T> * MemoryPoolBlock<T>::create(index_t entries_per_block)
 {
     // the header size
     const size_t header_size = sizeof(MemoryPoolBlock<T>);
+#if _MSC_VER <= 1800
+	const size_t entry_align = __alignof(T);
+#else
+	const size_t entry_align = alignof(T);
+#endif
     // extend indices size by alignment of T
     const size_t indices_size =
-            align_to(sizeof(index_t) * entries_per_block, alignof(T));
+                align_to(sizeof(index_t) * entries_per_block, entry_align);
     // align block to cache line size, or entry alignment if larger
     const size_t entries_size = sizeof(T) * entries_per_block;
     // block size includes indices + entry alignment + entries
@@ -228,13 +233,23 @@ MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
 }
 
 template <typename T>
+void destruct_all(MemoryPoolBlock<T> &, typename std::enable_if<
+	std::is_trivially_destructible<T>::value>::type* = 0)
+{
+}
+
+template <typename T>
+void destruct_all(MemoryPoolBlock<T> & t, typename std::enable_if<
+	!std::is_trivially_destructible<T>::value>::type* = 0)
+{
+	t.for_each([](T * ptr){ ptr->~T(); });
+}
+
+template <typename T>
 MemoryPoolBlock<T>::~MemoryPoolBlock()
 {
     // destruct any allocated objects
-    if (!std::is_trivially_destructible<T>::value)
-    {
-        for_each([](T * ptr){ ptr->~T(); });
-    }
+	destruct_all(*this);
 }
 
 template <typename T>
@@ -321,10 +336,7 @@ template <typename T>
 void MemoryPoolBlock<T>::delete_all()
 {
     // destruct any allocated objects
-    if (!std::is_trivially_destructible<T>::value)
-    {
-        for_each([](T * ptr){ ptr->~T(); });
-    }
+	destruct_all(*this);
     free_head_index_ = 0;
     index_t * indices = indices_begin();
     for (index_t i = 0; i < entries_per_block_; ++i)
