@@ -5,7 +5,58 @@
 #include <cinttypes>
 #include <iostream>
 #include <vector>
+#include <memory>
 
+namespace bench
+{
+
+typedef void(*BenchFuncPtr)();
+
+struct SourceLineInfo {
+
+    SourceLineInfo(const char * file, std::size_t line) :
+        file_(file), line_(line) {}
+    bool empty() const;
+    bool operator == ( SourceLineInfo const& other ) const;
+
+    const char * file_;
+    const std::size_t line_;
+};
+
+struct BenchRunDesc
+{
+    BenchRunDesc(const char * desc, std::size_t bytes = 0) :
+        desc_(desc), bytes_(bytes) {}
+
+    const char * desc_;
+    std::size_t bytes_;
+};
+
+struct BenchRun
+{
+    BenchFuncPtr func_;
+    const char * desc_;
+    std::size_t bytes_;
+    SourceLineInfo line_info_;
+
+    BenchRun(BenchFuncPtr function, const BenchRunDesc & bench_desc,
+             const SourceLineInfo & line_info) :
+        func_(function), desc_(bench_desc.desc_), bytes_(bench_desc.bytes_),
+        line_info_(line_info) {}
+};
+
+struct AutoReg
+{
+    AutoReg(BenchFuncPtr function, const SourceLineInfo & line_info,
+            const BenchRunDesc & name_and_desc);
+
+    AutoReg(const AutoReg &) = delete;
+    AutoReg & operator=(const AutoReg &) = delete;
+};
+
+} // namespace bench
+
+#ifdef BENCH_CONFIG_MAIN
 namespace stats
 {
 
@@ -122,8 +173,6 @@ private:
 namespace bench
 {
 
-using BenchFunc = void (*)();
-
 class Bencher
 {
     uint64_t iterations_ = 0;
@@ -140,7 +189,7 @@ public:
             return std::chrono::nanoseconds::zero();
         }
     }
-    void bench_n(uint64_t iterations, BenchFunc func)
+    void bench_n(uint64_t iterations, BenchFuncPtr func)
     {
         iterations_ = iterations;
         duration_ = std::chrono::nanoseconds::zero();
@@ -151,7 +200,7 @@ public:
         }
         duration_ = std::chrono::high_resolution_clock::now() - loop_start;
     }
-    stats::Summary<double> auto_bench(BenchFunc func)
+    stats::Summary<double> auto_bench(BenchFuncPtr func)
     {
         // initial bench run to get ballpark figure.
         uint64_t n = 1;
@@ -182,7 +231,7 @@ public:
         stats::Summary<double> summ5;
         for (;;)
         {
-			auto loop_start = std::chrono::high_resolution_clock::now();
+            auto loop_start = std::chrono::high_resolution_clock::now();
             for (auto & p : samples)
             {
                 bench_n(n, func);
@@ -258,7 +307,7 @@ std::string fmt_bench_samples(const BenchSamples & bs)
 #endif
 
 
-BenchSamples benchmark(BenchFunc bench_func, uint64_t bench_bytes)
+BenchSamples benchmark(BenchFuncPtr bench_func, uint64_t bench_bytes)
 {
     BenchSamples bs;
     Bencher b;
@@ -272,64 +321,72 @@ BenchSamples benchmark(BenchFunc bench_func, uint64_t bench_bytes)
     return bs;
 }
 
-namespace detail {
 
-struct TestDescription
+class RunRegistry
 {
-	TestDescription(BenchFunc func, const char * desc, uint64_t bytes) :
-		func(func), desc(desc), bytes(bytes) {}
-	BenchFunc func;
-	const char * desc;
-        uint64_t bytes;
+    std::vector<BenchRun> bench_runs_;
+public:
+    void register_bench_run(const BenchRun & test_case)
+    {
+        bench_runs_.emplace_back(test_case);
+    }
+    void run_all_console() const
+    {
+        int max_desc_len = 20;
+        for (const auto & test : bench_runs_)
+        {
+            max_desc_len = std::max<int>(strlen(test.desc_), max_desc_len);
+        }
+        for (const auto & test : bench_runs_)
+        {
+            bench::BenchSamples bs = bench::benchmark(test.func_, test.bytes_);
+            printf("%-*s %s\n", max_desc_len, test.desc_,
+                    bench::fmt_bench_samples(bs).c_str());
+        }
+    }
 };
 
-int run_tests_console(const std::vector<TestDescription> & tests)
+namespace
 {
-	int max_desc_len = 20;
-	for (const auto & test : tests)
-	{
-		max_desc_len = std::max<int>(strlen(test.desc), max_desc_len);
-	}
-	for (const auto & test : tests)
-	{
-        bench::BenchSamples bs = bench::benchmark(test.func, test.bytes);
-        printf("%-*s %s\n", max_desc_len, test.desc,
-                bench::fmt_bench_samples(bs).c_str());
-	}
-	return 0;
+    inline RunRegistry & get_registry()
+    {
+        static std::unique_ptr<RunRegistry> s_registry;
+        if (!s_registry)
+        {
+            s_registry.reset(new RunRegistry());
+        }
+        return *s_registry.get();
+    }
+} // anonymous namespace
+
+AutoReg::AutoReg(BenchFuncPtr function, const SourceLineInfo & line_info,
+        const BenchRunDesc & bench_desc)
+{
+    get_registry().register_bench_run(BenchRun(function, bench_desc,
+            line_info));
 }
 
-#ifdef BENCH_CONFIG_MAIN
-    std::vector<TestDescription> g_benchTests;
-#else
-    extern std::vector<TestDescription> g_benchTests;
-#endif
-    struct ScopedBenchAdder {
-        ScopedBenchAdder(BenchFunc func, const char * desc, uint64_t bytes) {
-            g_benchTests.emplace_back(func, desc, bytes);
-        }
-    };
-} // namespace detail
-
 } // namespace bench
+#endif
 
-#define BENCH_TEST_BYTES(test_name, bytes) \
-    namespace bench { \
-        namespace detail { \
-            void test_name(); \
-            ScopedBenchAdder test_name ## adder(test_name, #test_name, (bytes)); \
-        } \
-    } \
-    void bench::detail::test_name()
+#define INTERNAL_BENCH_LINEINFO ::bench::SourceLineInfo( __FILE__, static_cast<std::size_t>( __LINE__ ) )
 
-#define BENCH_TEST(test_name) \
-    BENCH_TEST_BYTES(test_name, 0)
+#define INTERNAL_BENCH_UNIQUE_NAME_LINE2( name, line ) name##line
+#define INTERNAL_BENCH_UNIQUE_NAME_LINE( name, line ) INTERNAL_BENCH_UNIQUE_NAME_LINE2( name, line )
+#define INTERNAL_BENCH_UNIQUE_NAME( name ) INTERNAL_BENCH_UNIQUE_NAME_LINE( name, __LINE__ )
+
+#define INTERNAL_BENCH_RUN( ... ) \
+    static void INTERNAL_BENCH_UNIQUE_NAME( ____C_A_T_C_H____T_E_S_T____ )(); \
+    namespace{ bench::AutoReg INTERNAL_BENCH_UNIQUE_NAME( autoRegistrar )( &INTERNAL_BENCH_UNIQUE_NAME(  ____C_A_T_C_H____T_E_S_T____ ), INTERNAL_BENCH_LINEINFO, bench::BenchRunDesc( __VA_ARGS__ ) ); }\
+    static void INTERNAL_BENCH_UNIQUE_NAME(  ____C_A_T_C_H____T_E_S_T____ )()
+
+#define BENCH_TEST( ... ) INTERNAL_BENCH_RUN( __VA_ARGS__ )
 
 #ifdef BENCH_CONFIG_MAIN
-int main()
+int main(int /*argc*/, const char * /*argv*/[])
 {
-    using namespace bench;
-    return run_tests_console(detail::g_benchTests);
+    bench::get_registry().run_all_console();
+    return 0;
 }
 #endif // BENCH_CONFIG_MAIN
 

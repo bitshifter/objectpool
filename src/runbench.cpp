@@ -135,11 +135,16 @@ private:
 #endif // BENCH_HEAP_ALLOC
 
 // I am a bad person. Bad and lazy.
+
+#define STRINGIFY2( expr ) #expr
+#define STRINGIFY( expr ) STRINGIFY2( expr )
+
 #define _CONFIG_BENCH_TEST(type, prefix, run, value_size, block_size, allocs) \
     static type g_ ## prefix ## _ ## value_size ## x ## block_size ## x ## allocs ## run ## _(block_size, allocs); \
-    BENCH_TEST_BYTES(prefix ## _ ## run ## _ ## value_size ## x ## block_size ## x ## allocs, allocs * value_size) { \
+    BENCH_TEST(STRINGIFY(prefix ## _ ## run ## _ ## value_size ## x ## block_size ## x ## allocs), allocs * value_size) { \
         run(g_ ## prefix ## _ ## value_size ## x ## block_size ## x ## allocs ## run ## _); \
     }
+
 
 #define FIXED_POOL_BENCH_TEST(run, value_size, block_size) \
     _CONFIG_BENCH_TEST(SizedPoolAlloc<FixedMemoryPool<Sized<value_size>>>, fixed_pool, run, value_size, block_size, block_size)
