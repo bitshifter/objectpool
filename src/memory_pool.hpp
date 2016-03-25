@@ -31,6 +31,8 @@ class MemoryPoolBlock
     index_t free_head_index_;
     const index_t entries_per_block_;
 
+    /// Constructor and destructor are private as create and destroy should
+    /// be used instead.
     MemoryPoolBlock(index_t entries_per_block);
     ~MemoryPoolBlock();
 
@@ -44,7 +46,11 @@ class MemoryPoolBlock
     T * memory_begin() const;
 
 public:
+    /// Creates to MemoryPoolBlock object and storage in a single aligned
+    /// allocation.
     static MemoryPoolBlock<T> * create(index_t entries_per_block);
+
+    /// Destroys the MemoryPoolBlock and associated storage.
     static void destroy(MemoryPoolBlock<T> * ptr);
 
     /// Allocates a new object from this block. Returns nullptr if there is
@@ -189,13 +195,13 @@ MemoryPoolBlock<T> * MemoryPoolBlock<T>::create(index_t entries_per_block)
     // the header size
     const size_t header_size = sizeof(MemoryPoolBlock<T>);
 #if _MSC_VER <= 1800
-	const size_t entry_align = __alignof(T);
+    const size_t entry_align = __alignof(T);
 #else
-	const size_t entry_align = alignof(T);
+    const size_t entry_align = alignof(T);
 #endif
     // extend indices size by alignment of T
     const size_t indices_size =
-                align_to(sizeof(index_t) * entries_per_block, entry_align);
+        align_to(sizeof(index_t) * entries_per_block, entry_align);
     // align block to cache line size, or entry alignment if larger
     const size_t entries_size = sizeof(T) * entries_per_block;
     // block size includes indices + entry alignment + entries
@@ -205,11 +211,11 @@ MemoryPoolBlock<T> * MemoryPoolBlock<T>::create(index_t entries_per_block)
     if (ptr)
     {
         new (ptr) MemoryPoolBlock(entries_per_block);
+        assert(reinterpret_cast<uint8_t*>(ptr->indices_begin())
+               == reinterpret_cast<uint8_t*>(ptr) + header_size);
+        assert(reinterpret_cast<uint8_t*>(ptr->memory_begin())
+               == reinterpret_cast<uint8_t*>(ptr) + header_size + indices_size);
     }
-    assert(reinterpret_cast<uint8_t*>(ptr->indices_begin())
-           == reinterpret_cast<uint8_t*>(ptr) + header_size);
-    assert(reinterpret_cast<uint8_t*>(ptr->memory_begin())
-           == reinterpret_cast<uint8_t*>(ptr) + header_size + indices_size);
     return ptr;
 }
 
@@ -234,29 +240,29 @@ MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
 
 template <typename T>
 void destruct_all(MemoryPoolBlock<T> &, typename std::enable_if<
-	std::is_trivially_destructible<T>::value>::type* = 0)
+    std::is_trivially_destructible<T>::value>::type* = 0)
 {
 }
 
 template <typename T>
 void destruct_all(MemoryPoolBlock<T> & t, typename std::enable_if<
-	!std::is_trivially_destructible<T>::value>::type* = 0)
+    !std::is_trivially_destructible<T>::value>::type* = 0)
 {
-	t.for_each([](T * ptr){ ptr->~T(); });
+    t.for_each([](T * ptr){ ptr->~T(); });
 }
 
 template <typename T>
 MemoryPoolBlock<T>::~MemoryPoolBlock()
 {
     // destruct any allocated objects
-	destruct_all(*this);
+    destruct_all(*this);
 }
 
 template <typename T>
 index_t * MemoryPoolBlock<T>::indices_begin() const
 {
     return reinterpret_cast<index_t*>(
-                const_cast<MemoryPoolBlock<T>*>(this + 1));
+        const_cast<MemoryPoolBlock<T>*>(this + 1));
 }
 
 template <typename T>
@@ -336,7 +342,7 @@ template <typename T>
 void MemoryPoolBlock<T>::delete_all()
 {
     // destruct any allocated objects
-	destruct_all(*this);
+    destruct_all(*this);
     free_head_index_ = 0;
     index_t * indices = indices_begin();
     for (index_t i = 0; i < entries_per_block_; ++i)
@@ -548,7 +554,7 @@ void DynamicMemoryPool<T>::reclaim_memory()
     // resize the block info array
     num_blocks_ = used_index + 1;
     block_info_ = reinterpret_cast<BlockInfo*>(
-                realloc(block_info_, sizeof(BlockInfo) * num_blocks_));
+        realloc(block_info_, sizeof(BlockInfo) * num_blocks_));
 
     // find the first free block index
     free_block_index_ = num_blocks_;
