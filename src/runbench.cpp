@@ -2,6 +2,7 @@
 #include "bench.hpp"
 #include "memory_pool.hpp"
 
+/// Test which allocates a number of objects then frees them all
 template <typename T>
 void alloc_free(T& pool)
 {
@@ -12,6 +13,8 @@ void alloc_free(T& pool)
     pool.delete_all();
 }
 
+/// Test which allocates a number of objects, memsets their contents a number
+/// of times then deletes all of the objects again.
 template <typename T>
 void alloc_memset_free(T& pool)
 {
@@ -32,9 +35,13 @@ void alloc_memset_free(T& pool)
     pool.delete_all();
 }
 
+/// A struct which is the size of the given template parameter
 template <size_t N>
 struct Sized { char c[N]; };
 
+/// Test harness for running benchmark tests using the pool allocator.
+/// Maintains a std::vector of pointers to match behaviour of the default
+/// allocator implementation.
 template <typename PoolT>
 class SizedPoolAlloc
 {
@@ -84,6 +91,7 @@ private:
 
 #define BENCH_HEAP_ALLOC
 #ifdef BENCH_HEAP_ALLOC
+/// Test harness for running benchmark tests using the default system allocator.
 template <size_t N>
 class SizedHeapAlloc
 {

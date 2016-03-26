@@ -6,13 +6,6 @@
 #include <memory>
 #include <vector>
 
-struct MemoryPoolStats
-{
-    size_t num_blocks = 0;
-    size_t num_allocations = 0;
-};
-
-
 namespace detail
 {
 /// Default index type, this dictates the maximum number of entries in a
@@ -77,6 +70,16 @@ public:
 
 } // namespace detail
 
+
+/// Memory pool statistics structure used for returning information about
+/// pool usage.
+struct MemoryPoolStats
+{
+    size_t num_blocks = 0;
+    size_t num_allocations = 0;
+};
+
+
 /// FixedMemoryPool contains a single MemoryPoolBlock, it will not grow
 /// beyond the max number of entries given at construction time.
 template <typename T>
@@ -105,7 +108,7 @@ public:
     void for_each(const F func) const;
 
     /// Calculates memory pool stats
-    MemoryPoolStats get_stats() const;
+    MemoryPoolStats calc_stats() const;
 
 private:
     typedef detail::MemoryPoolBlock<T> Block;
@@ -146,7 +149,7 @@ public:
     void for_each(const F func) const;
 
     /// Calculates memory pool stats
-    MemoryPoolStats get_stats() const;
+    MemoryPoolStats calc_stats() const;
 
 private:
     typedef detail::MemoryPoolBlock<T> Block;
@@ -242,12 +245,14 @@ template <typename T>
 void destruct_all(MemoryPoolBlock<T> &, typename std::enable_if<
     std::is_trivially_destructible<T>::value>::type* = 0)
 {
+    // skip calling destructors for trivially destructible types
 }
 
 template <typename T>
 void destruct_all(MemoryPoolBlock<T> & t, typename std::enable_if<
     !std::is_trivially_destructible<T>::value>::type* = 0)
 {
+    // call destructors on all live objects in the pool
     t.for_each([](T * ptr){ ptr->~T(); });
 }
 
@@ -261,6 +266,7 @@ MemoryPoolBlock<T>::~MemoryPoolBlock()
 template <typename T>
 index_t * MemoryPoolBlock<T>::indices_begin() const
 {
+    // calculcates the start of the indicies
     return reinterpret_cast<index_t*>(
         const_cast<MemoryPoolBlock<T>*>(this + 1));
 }
@@ -268,6 +274,7 @@ index_t * MemoryPoolBlock<T>::indices_begin() const
 template <typename T>
 T * MemoryPoolBlock<T>::memory_begin() const
 {
+    // calculates the start of pool memory
     return reinterpret_cast<T*>(indices_begin() + entries_per_block_);
 }
 
@@ -290,7 +297,7 @@ T * MemoryPoolBlock<T>::new_object(P&&... params)
         assert(indices[index] != index);
         // update head of the free list
         free_head_index_ = indices[index];
-        // flag index as used
+        // flag index as used by assigning it's own index
         indices[index] = index;
         // get entry memory
         T * ptr = memory_begin() + index;
@@ -318,7 +325,7 @@ void MemoryPoolBlock<T>::delete_object(const T * ptr)
         assert(indices[index] == index);
         // remove index from used list
         indices[index] = free_head_index_;
-        // store index of next free entry in this pointer
+        // store index of next free entry in this entry
         free_head_index_ = index;
     }
 }
@@ -368,7 +375,7 @@ FixedMemoryPool<T>::FixedMemoryPool(index_t max_entries) :
 template <typename T>
 FixedMemoryPool<T>::~FixedMemoryPool()
 {
-    assert(get_stats().num_allocations == 0);
+    assert(calc_stats().num_allocations == 0);
     Block::destroy(block_);
 }
 
@@ -399,7 +406,7 @@ void FixedMemoryPool<T>::for_each(const F func) const
 }
 
 template <typename T>
-MemoryPoolStats FixedMemoryPool<T>::get_stats() const
+MemoryPoolStats FixedMemoryPool<T>::calc_stats() const
 {
     MemoryPoolStats stats;
     stats.num_blocks = 1;
@@ -422,7 +429,7 @@ template <typename T>
 DynamicMemoryPool<T>::~DynamicMemoryPool()
 {
     // explicitly delete_object or delete_all before pool goes out of scope
-    assert(get_stats().num_allocations == 0);
+    assert(calc_stats().num_allocations == 0);
 }
 
 template <typename T>
@@ -432,14 +439,14 @@ typename DynamicMemoryPool<T>::BlockInfo * DynamicMemoryPool<T>::add_block()
     if (Block * block = Block::create(entries_per_block_))
     {
         // update the number of blocks
-        num_blocks_++;
+        ++num_blocks_;
         // allocate space for new block info
         block_info_ = reinterpret_cast<BlockInfo*>(
-                    realloc(block_info_, num_blocks_ * sizeof(BlockInfo)));
+            realloc(block_info_, num_blocks_ * sizeof(BlockInfo)));
         // initialise the new block info structure
         BlockInfo & info = block_info_[free_block_index_];
         info.num_free_ = entries_per_block_;
-        info.offset_ = const_cast<const Block*>(block)->memory_offset();
+        info.offset_ = block->memory_offset();
         info.block_ = block;
         return &info;
     }
@@ -583,7 +590,7 @@ void DynamicMemoryPool<T>::for_each(const F func) const
 }
 
 template <typename T>
-MemoryPoolStats DynamicMemoryPool<T>::get_stats() const
+MemoryPoolStats DynamicMemoryPool<T>::calc_stats() const
 {
     MemoryPoolStats stats;
     stats.num_blocks = num_blocks_;
