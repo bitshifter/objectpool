@@ -27,10 +27,6 @@ A separate list of indices is used to track occupancy versus reusing object
 pool memory for this purpose to avoid polluting CPU caches with objects which
 are deleted and thus no longer in use.
 
-Initially the MemoryPoolBlock was using bitflags with popcount intrinsics to
-track occupancy but profiling (on x86_64) showed this to be slower than just
-using indices to the next free entry.
-
 This class is not designed with exceptions in mind as most game code avoids
 using exceptions.
 
