@@ -17,8 +17,8 @@
  *    misrepresented as being the original software.
  * 3. This notice may not be removed or altered from any source distribution.
 */
-#ifndef _BITS_MEMORY_POOL_H_
-#define _BITS_MEMORY_POOL_H_
+#ifndef _BITS_OBJECT_POOL_H_
+#define _BITS_OBJECT_POOL_H_
 
 #include <cassert>
 #include <cstdint>
@@ -31,13 +31,13 @@ namespace detail
 /// single pool block.
 typedef uint32_t index_t;
 
-/// Base memory pool block. This contains a list of indices of free and used
+/// Base object pool block. This contains a list of indices of free and used
 /// entries and the storage for the entries themselves. Everything is allocated
 /// in a single allocation in the static create function, and indices_begin()
 /// and memory_begin() methods will return pointers offset from this for their
 /// respective data.
 template <typename T>
-class MemoryPoolBlock
+class ObjectPoolBlock
 {
     /// Index of the first free entry
     index_t free_head_index_;
@@ -45,11 +45,11 @@ class MemoryPoolBlock
 
     /// Constructor and destructor are private as create and destroy should
     /// be used instead.
-    MemoryPoolBlock(index_t entries_per_block);
-    ~MemoryPoolBlock();
+    ObjectPoolBlock(index_t entries_per_block);
+    ~ObjectPoolBlock();
 
-    MemoryPoolBlock(const MemoryPoolBlock &) = delete;
-    MemoryPoolBlock & operator=(const MemoryPoolBlock &) = delete;
+    ObjectPoolBlock(const ObjectPoolBlock &) = delete;
+    ObjectPoolBlock & operator=(const ObjectPoolBlock &) = delete;
 
     /// returns start of indices
     index_t * indices_begin() const;
@@ -58,12 +58,12 @@ class MemoryPoolBlock
     T * memory_begin() const;
 
 public:
-    /// Creates to MemoryPoolBlock object and storage in a single aligned
+    /// Creates to ObjectPoolBlock object and storage in a single aligned
     /// allocation.
-    static MemoryPoolBlock<T> * create(index_t entries_per_block);
+    static ObjectPoolBlock<T> * create(index_t entries_per_block);
 
-    /// Destroys the MemoryPoolBlock and associated storage.
-    static void destroy(MemoryPoolBlock<T> * ptr);
+    /// Destroys the ObjectPoolBlock and associated storage.
+    static void destroy(ObjectPoolBlock<T> * ptr);
 
     /// Allocates a new object from this block. Returns nullptr if there is
     /// no available space.
@@ -90,26 +90,26 @@ public:
 } // namespace detail
 
 
-/// Memory pool statistics structure used for returning information about
+/// Object pool statistics structure used for returning information about
 /// pool usage.
-struct MemoryPoolStats
+struct ObjectPoolStats
 {
     size_t num_blocks = 0;
     size_t num_allocations = 0;
 };
 
 
-/// FixedMemoryPool contains a single MemoryPoolBlock, it will not grow
+/// FixedObjectPool contains a single ObjectPoolBlock, it will not grow
 /// beyond the max number of entries given at construction time.
 template <typename T>
-class FixedMemoryPool
+class FixedObjectPool
 {
 public:
     typedef detail::index_t index_t;
     typedef T value_type;
 
-    FixedMemoryPool(index_t max_entries);
-    ~FixedMemoryPool();
+    FixedObjectPool(index_t max_entries);
+    ~FixedObjectPool();
 
     /// Constructs a new object from the pool. Returns nullptr if there is no
     /// available space.
@@ -126,28 +126,28 @@ public:
     template <typename F>
     void for_each(const F func) const;
 
-    /// Calculates memory pool stats
-    MemoryPoolStats calc_stats() const;
+    /// Calculates object pool stats
+    ObjectPoolStats calc_stats() const;
 
 private:
-    typedef detail::MemoryPoolBlock<T> Block;
+    typedef detail::ObjectPoolBlock<T> Block;
     Block * block_;
 
-    FixedMemoryPool(const FixedMemoryPool &) = delete;
-    FixedMemoryPool & operator=(const FixedMemoryPool &) = delete;
+    FixedObjectPool(const FixedObjectPool &) = delete;
+    FixedObjectPool & operator=(const FixedObjectPool &) = delete;
 };
 
 
-/// DynamicMemoryPool contains a dynamic array of MemoryPoolBlocks.
+/// DynamicObjectPool contains a dynamic array of ObjectPoolBlocks.
 template <typename T>
-class DynamicMemoryPool
+class DynamicObjectPool
 {
 public:
     typedef detail::index_t index_t;
     typedef T value_type;
 
-    DynamicMemoryPool(index_t entries_per_block);
-    ~DynamicMemoryPool();
+    DynamicObjectPool(index_t entries_per_block);
+    ~DynamicObjectPool();
 
     /// Constructs a new object from the pool. Returns nullptr if there is no
     /// available space.
@@ -160,18 +160,18 @@ public:
     /// Delete all current allocations
     void delete_all();
 
-    /// Reclaim unused memory pool blocks
+    /// Reclaim unused object pool blocks
     void reclaim_memory();
 
     /// Calls the given function for all allocated entries
     template <typename F>
     void for_each(const F func) const;
 
-    /// Calculates memory pool stats
-    MemoryPoolStats calc_stats() const;
+    /// Calculates object pool stats
+    ObjectPoolStats calc_stats() const;
 
 private:
-    typedef detail::MemoryPoolBlock<T> Block;
+    typedef detail::ObjectPoolBlock<T> Block;
 
     /// The BlockInfo struct keeps regularly accessed block information
     /// packed together for better memory locality.
@@ -179,7 +179,7 @@ private:
     {
         /// cache the number of free entries for this block
         index_t num_free_;
-        /// cache the offset of entries memory from the start of the block
+        /// cache the offset of object memory from the start of the block
         const T * offset_;
         /// pointer to the block itself
         Block * block_;
@@ -197,8 +197,8 @@ private:
     /// Adds a new block and updates the free_block_index.
     BlockInfo * add_block();
 
-    DynamicMemoryPool(const DynamicMemoryPool &) = delete;
-    DynamicMemoryPool & operator=(const DynamicMemoryPool &) = delete;
+    DynamicObjectPool(const DynamicObjectPool &) = delete;
+    DynamicObjectPool & operator=(const DynamicObjectPool &) = delete;
 };
 
 namespace detail
@@ -212,10 +212,10 @@ void aligned_free(void * ptr);
 size_t align_to(size_t n, size_t align);
 
 template <typename T>
-MemoryPoolBlock<T> * MemoryPoolBlock<T>::create(index_t entries_per_block)
+ObjectPoolBlock<T> * ObjectPoolBlock<T>::create(index_t entries_per_block)
 {
     // the header size
-    const size_t header_size = sizeof(MemoryPoolBlock<T>);
+    const size_t header_size = sizeof(ObjectPoolBlock<T>);
 #if _MSC_VER <= 1800
     const size_t entry_align = __alignof(T);
 #else
@@ -228,11 +228,11 @@ MemoryPoolBlock<T> * MemoryPoolBlock<T>::create(index_t entries_per_block)
     const size_t entries_size = sizeof(T) * entries_per_block;
     // block size includes indices + entry alignment + entries
     const size_t block_size = header_size + indices_size + entries_size;
-    MemoryPoolBlock<T> * ptr = reinterpret_cast<MemoryPoolBlock<T>*>(
+    ObjectPoolBlock<T> * ptr = reinterpret_cast<ObjectPoolBlock<T>*>(
                 aligned_malloc(block_size, MIN_BLOCK_ALIGN));
     if (ptr)
     {
-        new (ptr) MemoryPoolBlock(entries_per_block);
+        new (ptr) ObjectPoolBlock(entries_per_block);
         assert(reinterpret_cast<uint8_t*>(ptr->indices_begin())
                == reinterpret_cast<uint8_t*>(ptr) + header_size);
         assert(reinterpret_cast<uint8_t*>(ptr->memory_begin())
@@ -242,14 +242,14 @@ MemoryPoolBlock<T> * MemoryPoolBlock<T>::create(index_t entries_per_block)
 }
 
 template <typename T>
-void MemoryPoolBlock<T>::destroy(MemoryPoolBlock<T> * ptr)
+void ObjectPoolBlock<T>::destroy(ObjectPoolBlock<T> * ptr)
 {
-    ptr->~MemoryPoolBlock();
+    ptr->~ObjectPoolBlock();
     aligned_free(ptr);
 }
 
 template <typename T>
-MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
+ObjectPoolBlock<T>::ObjectPoolBlock(index_t entries_per_block) :
     free_head_index_(0),
     entries_per_block_(entries_per_block)
 {
@@ -261,14 +261,14 @@ MemoryPoolBlock<T>::MemoryPoolBlock(index_t entries_per_block) :
 }
 
 template <typename T>
-void destruct_all(MemoryPoolBlock<T> &, typename std::enable_if<
+void destruct_all(ObjectPoolBlock<T> &, typename std::enable_if<
     std::is_trivially_destructible<T>::value>::type* = 0)
 {
     // skip calling destructors for trivially destructible types
 }
 
 template <typename T>
-void destruct_all(MemoryPoolBlock<T> & t, typename std::enable_if<
+void destruct_all(ObjectPoolBlock<T> & t, typename std::enable_if<
     !std::is_trivially_destructible<T>::value>::type* = 0)
 {
     // call destructors on all live objects in the pool
@@ -276,36 +276,36 @@ void destruct_all(MemoryPoolBlock<T> & t, typename std::enable_if<
 }
 
 template <typename T>
-MemoryPoolBlock<T>::~MemoryPoolBlock()
+ObjectPoolBlock<T>::~ObjectPoolBlock()
 {
     // destruct any allocated objects
     destruct_all(*this);
 }
 
 template <typename T>
-index_t * MemoryPoolBlock<T>::indices_begin() const
+index_t * ObjectPoolBlock<T>::indices_begin() const
 {
     // calculcates the start of the indicies
     return reinterpret_cast<index_t*>(
-        const_cast<MemoryPoolBlock<T>*>(this + 1));
+        const_cast<ObjectPoolBlock<T>*>(this + 1));
 }
 
 template <typename T>
-T * MemoryPoolBlock<T>::memory_begin() const
+T * ObjectPoolBlock<T>::memory_begin() const
 {
     // calculates the start of pool memory
     return reinterpret_cast<T*>(indices_begin() + entries_per_block_);
 }
 
 template <typename T>
-const T * MemoryPoolBlock<T>::memory_offset() const
+const T * ObjectPoolBlock<T>::memory_offset() const
 {
     return memory_begin();
 }
 
 template <typename T>
 template <class... P>
-T * MemoryPoolBlock<T>::new_object(P&&... params)
+T * ObjectPoolBlock<T>::new_object(P&&... params)
 {
     // get the head of the free list
     const index_t index = free_head_index_;
@@ -318,7 +318,7 @@ T * MemoryPoolBlock<T>::new_object(P&&... params)
         free_head_index_ = indices[index];
         // flag index as used by assigning it's own index
         indices[index] = index;
-        // get entry memory
+        // get object memory
         T * ptr = memory_begin() + index;
         // construct the entry
         new (ptr) T(std::forward<P>(params)...);
@@ -328,7 +328,7 @@ T * MemoryPoolBlock<T>::new_object(P&&... params)
 }
 
 template <typename T>
-void MemoryPoolBlock<T>::delete_object(const T * ptr)
+void ObjectPoolBlock<T>::delete_object(const T * ptr)
 {
     if (ptr)
     {
@@ -351,7 +351,7 @@ void MemoryPoolBlock<T>::delete_object(const T * ptr)
 
 template <typename T>
 template <typename F>
-void MemoryPoolBlock<T>::for_each(const F func) const
+void ObjectPoolBlock<T>::for_each(const F func) const
 {
     const index_t * indices = indices_begin();
     T * first = memory_begin();
@@ -365,7 +365,7 @@ void MemoryPoolBlock<T>::for_each(const F func) const
 }
 
 template <typename T>
-void MemoryPoolBlock<T>::delete_all()
+void ObjectPoolBlock<T>::delete_all()
 {
     // destruct any allocated objects
     destruct_all(*this);
@@ -378,7 +378,7 @@ void MemoryPoolBlock<T>::delete_all()
 }
 
 template <typename T>
-index_t MemoryPoolBlock<T>::num_allocations() const
+index_t ObjectPoolBlock<T>::num_allocations() const
 {
     index_t num_allocs = 0;
     for_each([&num_allocs](const T *){ ++num_allocs; });
@@ -388,11 +388,11 @@ index_t MemoryPoolBlock<T>::num_allocations() const
 } // namespace detail
 
 template <typename T>
-FixedMemoryPool<T>::FixedMemoryPool(index_t max_entries) :
+FixedObjectPool<T>::FixedObjectPool(index_t max_entries) :
     block_(Block::create(max_entries)) {}
 
 template <typename T>
-FixedMemoryPool<T>::~FixedMemoryPool()
+FixedObjectPool<T>::~FixedObjectPool()
 {
     assert(calc_stats().num_allocations == 0);
     Block::destroy(block_);
@@ -400,41 +400,41 @@ FixedMemoryPool<T>::~FixedMemoryPool()
 
 template <typename T>
 template <class... P>
-T * FixedMemoryPool<T>::new_object(P&&... params)
+T * FixedObjectPool<T>::new_object(P&&... params)
 {
     return block_->new_object(std::forward<P>(params)...);
 }
 
 template <typename T>
-void FixedMemoryPool<T>::delete_object(const T * ptr)
+void FixedObjectPool<T>::delete_object(const T * ptr)
 {
     block_->delete_object(ptr);
 }
 
 template <typename T>
-void FixedMemoryPool<T>::delete_all()
+void FixedObjectPool<T>::delete_all()
 {
     block_->delete_all();
 }
 
 template <typename T>
 template <typename F>
-void FixedMemoryPool<T>::for_each(const F func) const
+void FixedObjectPool<T>::for_each(const F func) const
 {
     block_->for_each(func);
 }
 
 template <typename T>
-MemoryPoolStats FixedMemoryPool<T>::calc_stats() const
+ObjectPoolStats FixedObjectPool<T>::calc_stats() const
 {
-    MemoryPoolStats stats;
+    ObjectPoolStats stats;
     stats.num_blocks = 1;
     stats.num_allocations = block_->num_allocations();
     return stats;
 }
 
 template <typename T>
-DynamicMemoryPool<T>::DynamicMemoryPool(index_t entries_per_block) :
+DynamicObjectPool<T>::DynamicObjectPool(index_t entries_per_block) :
     block_info_(nullptr),
     num_blocks_(0),
     free_block_index_(0),
@@ -445,14 +445,14 @@ DynamicMemoryPool<T>::DynamicMemoryPool(index_t entries_per_block) :
 }
 
 template <typename T>
-DynamicMemoryPool<T>::~DynamicMemoryPool()
+DynamicObjectPool<T>::~DynamicObjectPool()
 {
     // explicitly delete_object or delete_all before pool goes out of scope
     assert(calc_stats().num_allocations == 0);
 }
 
 template <typename T>
-typename DynamicMemoryPool<T>::BlockInfo * DynamicMemoryPool<T>::add_block()
+typename DynamicObjectPool<T>::BlockInfo * DynamicObjectPool<T>::add_block()
 {
     assert(free_block_index_ == num_blocks_);
     if (Block * block = Block::create(entries_per_block_))
@@ -474,7 +474,7 @@ typename DynamicMemoryPool<T>::BlockInfo * DynamicMemoryPool<T>::add_block()
 
 template <typename T>
 template <typename... P>
-T * DynamicMemoryPool<T>::new_object(P&&... params)
+T * DynamicObjectPool<T>::new_object(P&&... params)
 {
     assert(free_block_index_ < num_blocks_);
 
@@ -505,7 +505,7 @@ T * DynamicMemoryPool<T>::new_object(P&&... params)
 }
 
 template <typename T>
-void DynamicMemoryPool<T>::delete_object(const T * ptr)
+void DynamicObjectPool<T>::delete_object(const T * ptr)
 {
     BlockInfo * p_info = block_info_;
     for (auto end = p_info + num_blocks_; p_info != end; ++p_info)
@@ -527,7 +527,7 @@ void DynamicMemoryPool<T>::delete_object(const T * ptr)
 }
 
 template <typename T>
-void DynamicMemoryPool<T>::delete_all()
+void DynamicObjectPool<T>::delete_all()
 {
     for (BlockInfo * p_info = block_info_,
          * p_end = block_info_ + num_blocks_; p_info != p_end; ++p_info)
@@ -539,7 +539,7 @@ void DynamicMemoryPool<T>::delete_all()
 }
 
 template <typename T>
-void DynamicMemoryPool<T>::reclaim_memory()
+void DynamicObjectPool<T>::reclaim_memory()
 {
     // loop through all blocks shuffling the used blocks to the front and unused
     // to the back.
@@ -596,7 +596,7 @@ void DynamicMemoryPool<T>::reclaim_memory()
 
 template <typename T>
 template <typename F>
-void DynamicMemoryPool<T>::for_each(const F func) const
+void DynamicObjectPool<T>::for_each(const F func) const
 {
     for (const BlockInfo * p_info = block_info_,
          * p_end = block_info_ + num_blocks_; p_info != p_end; ++p_info)
@@ -609,9 +609,9 @@ void DynamicMemoryPool<T>::for_each(const F func) const
 }
 
 template <typename T>
-MemoryPoolStats DynamicMemoryPool<T>::calc_stats() const
+ObjectPoolStats DynamicObjectPool<T>::calc_stats() const
 {
-    MemoryPoolStats stats;
+    ObjectPoolStats stats;
     stats.num_blocks = num_blocks_;
     stats.num_allocations = 0;
     for (const BlockInfo * p_info = block_info_,
@@ -625,5 +625,5 @@ MemoryPoolStats DynamicMemoryPool<T>::calc_stats() const
     return stats;
 }
 
-#endif // _BITS_MEMORY_POOL_H_
+#endif // _BITS_OBJECT_POOL_H_
 

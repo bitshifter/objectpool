@@ -1,6 +1,6 @@
 #define BENCH_CONFIG_MAIN  // This tells Bench to provide a main() - only do this in one cpp file
 #include "bench.hpp"
-#include "memory_pool.hpp"
+#include "object_pool.hpp"
 
 /// Test which allocates a number of objects then frees them all
 template <typename T>
@@ -155,9 +155,9 @@ private:
 
 
 #define FIXED_POOL_BENCH_TEST(run, value_size, block_size) \
-    _CONFIG_BENCH_TEST(SizedPoolAlloc<FixedMemoryPool<Sized<value_size>>>, fixed_pool, run, value_size, block_size, block_size)
+    _CONFIG_BENCH_TEST(SizedPoolAlloc<FixedObjectPool<Sized<value_size>>>, fixed_pool, run, value_size, block_size, block_size)
 #define DYNAMIC_POOL_BENCH_TEST(run, value_size, block_size, allocs) \
-    _CONFIG_BENCH_TEST(SizedPoolAlloc<DynamicMemoryPool<Sized<value_size>>>, dynamic_pool, run, value_size, block_size, allocs)
+    _CONFIG_BENCH_TEST(SizedPoolAlloc<DynamicObjectPool<Sized<value_size>>>, dynamic_pool, run, value_size, block_size, allocs)
 #define HEAP_BENCH_TEST(run, value_size, block_size) \
     _CONFIG_BENCH_TEST(SizedHeapAlloc<value_size>, heap, run, value_size, block_size, block_size)
 

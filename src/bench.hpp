@@ -376,9 +376,9 @@ AutoReg::AutoReg(BenchFuncPtr function, const SourceLineInfo & line_info,
 #define INTERNAL_BENCH_UNIQUE_NAME( name ) INTERNAL_BENCH_UNIQUE_NAME_LINE( name, __LINE__ )
 
 #define INTERNAL_BENCH_RUN( ... ) \
-    static void INTERNAL_BENCH_UNIQUE_NAME( ____C_A_T_C_H____T_E_S_T____ )(); \
-    namespace{ bench::AutoReg INTERNAL_BENCH_UNIQUE_NAME( autoRegistrar )( &INTERNAL_BENCH_UNIQUE_NAME(  ____C_A_T_C_H____T_E_S_T____ ), INTERNAL_BENCH_LINEINFO, bench::BenchRunDesc( __VA_ARGS__ ) ); }\
-    static void INTERNAL_BENCH_UNIQUE_NAME(  ____C_A_T_C_H____T_E_S_T____ )()
+    static void INTERNAL_BENCH_UNIQUE_NAME( ____B_E_N_C_H____T_E_S_T____ )(); \
+    namespace{ bench::AutoReg INTERNAL_BENCH_UNIQUE_NAME( autoRegistrar )( &INTERNAL_BENCH_UNIQUE_NAME(  ____B_E_N_C_H____T_E_S_T____ ), INTERNAL_BENCH_LINEINFO, bench::BenchRunDesc( __VA_ARGS__ ) ); }\
+    static void INTERNAL_BENCH_UNIQUE_NAME(  ____B_E_N_C_H____T_E_S_T____ )()
 
 #define BENCH_TEST( ... ) INTERNAL_BENCH_RUN( __VA_ARGS__ )
 

@@ -1,16 +1,16 @@
-## Object Pool Memory Allocator
+## Object Pool Allocator
 
-This is a C++11 implementation of an object pool memory allocator.
+This is a C++11 implementation of an object pool allocator.
 
 For more information on object pool allocators and their purpose see 
 http://gameprogrammingpatterns.com/object-pool.html.
 
 Both a fixed size pool and a dynamically growing pool implementation are
-included. These are both implemented using the `MemoryPoolBlock`
+included. These are both implemented using the `ObjectPoolBlock`
 class.
 
 The main features of this implementation are:
-* `MemoryPoolBlock` is a single allocation containing the MemoryPoolBlock
+* `ObjectPoolBlock` is a single allocation containing the `ObjectPoolBlock`
   instance, indices of used pool entries and the pool memory itself
 * `new_object` method uses C++11 std::forward to pass construction arguments
   to the constructor of the new object being created in the pool
@@ -20,7 +20,7 @@ The main features of this implementation are:
   destructor call for trivial types
 
 Occupancy is tracked using indexes into available entries in the block. The
-MemoryPoolBlock keeps the next free index head. This index can be used to
+`ObjectPoolBlock` keeps the next free index head. This index can be used to
 find the next available block entry when allocating a new entry.
 
 A separate list of indices is used to track occupancy versus reusing object

@@ -17,7 +17,7 @@
  *    misrepresented as being the original software.
  * 3. This notice may not be removed or altered from any source distribution.
 */
-#include "memory_pool.hpp"
+#include "object_pool.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -236,52 +236,52 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
     }
 }
 
-TEST_CASE("FixedMemoryPool single new and delete", "[fixedpool]")
+TEST_CASE("FixedObjectPool single new and delete", "[fixedpool]")
 {
-    FixedMemoryPool<uint32_t> mp(64);
+    FixedObjectPool<uint32_t> mp(64);
     singleNewAndDelete(mp);
 }
 
-TEST_CASE("DynamicMemoryPool single new and delete", "[dynamicpool]")
+TEST_CASE("DynamicObjectPool single new and delete", "[dynamicpool]")
 {
-    DynamicMemoryPool<uint32_t> mp(64);
+    DynamicObjectPool<uint32_t> mp(64);
     singleNewAndDelete(mp);
 }
 
-TEST_CASE("FixedMemoryPool double new and delete", "[fixedpool]")
+TEST_CASE("FixedObjectPool double new and delete", "[fixedpool]")
 {
-    FixedMemoryPool<uint32_t> mp(64);
+    FixedObjectPool<uint32_t> mp(64);
     doubleNewAndDelete(mp);
 }
 
 TEST_CASE("Dynamic pool double new and delete", "[dynamicpool]")
 {
-    DynamicMemoryPool<uint32_t> mp(64);
+    DynamicObjectPool<uint32_t> mp(64);
     doubleNewAndDelete(mp);
 }
 
-TEST_CASE("FixedMemoryPool block fill and free", "[fixedpool]")
+TEST_CASE("FixedObjectPool block fill and free", "[fixedpool]")
 {
-    FixedMemoryPool<uint32_t> mp(64);
+    FixedObjectPool<uint32_t> mp(64);
     blockFillAndFree(mp, 64);
 }
 
-TEST_CASE("DynamicMemoryPool block fill and free", "[dynamicpool]")
+TEST_CASE("DynamicObjectPool block fill and free", "[dynamicpool]")
 {
-    DynamicMemoryPool<uint32_t> mp(64);
+    DynamicObjectPool<uint32_t> mp(64);
     blockFillAndFree(mp, 64);
 }
 
-TEST_CASE("DynamicMemoryPool double block fill and free", "[dynamicpool]")
+TEST_CASE("DynamicObjectPool double block fill and free", "[dynamicpool]")
 {
-    DynamicMemoryPool<uint32_t> mp(64);
+    DynamicObjectPool<uint32_t> mp(64);
     blockFillAndFree(mp, 128);
 }
 
-TEST_CASE("DynamicMemoryPool delete all", "[dynamicpool")
+TEST_CASE("DynamicObjectPool delete all", "[dynamicpool")
 {
     std::vector<uint32_t*> v(128, nullptr);
-    DynamicMemoryPool<uint32_t> mp(32);
+    DynamicObjectPool<uint32_t> mp(32);
     CHECK(mp.calc_stats().num_blocks == 1u);
     CHECK(mp.calc_stats().num_allocations == 0u);
     mp.delete_all();
@@ -367,21 +367,21 @@ TEST_CASE("DynamicMemoryPool delete all", "[dynamicpool")
     CHECK(mp.calc_stats().num_allocations == 0u);
 }
 
-TEST_CASE("FixedMemoryPool iterate full block", "[fixedpool]")
+TEST_CASE("FixedObjectPool iterate full block", "[fixedpool]")
 {
-    FixedMemoryPool<uint32_t> mp(64);
+    FixedObjectPool<uint32_t> mp(64);
     iterateFullBlocks(mp, 64, 1);
 }
 
-TEST_CASE("DynamicMemoryPool iterate full block", "[dynamicpool]")
+TEST_CASE("DynamicObjectPool iterate full block", "[dynamicpool]")
 {
-    DynamicMemoryPool<uint32_t> mp(64);
+    DynamicObjectPool<uint32_t> mp(64);
     iterateFullBlocks(mp, 64, 1);
 }
 
-TEST_CASE("DynamicMemoryPool iterate double full blocks", "[dynamicpool]")
+TEST_CASE("DynamicObjectPool iterate double full blocks", "[dynamicpool]")
 {
-    DynamicMemoryPool<uint32_t> mp(64);
+    DynamicObjectPool<uint32_t> mp(64);
     iterateFullBlocks(mp, 128, 2);
 }
 

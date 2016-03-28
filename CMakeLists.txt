@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12)
 
-PROJECT(memorypool)
+PROJECT(object_pool)
 
 IF(MSVC)
 	IF((MSVC_VERSION LESS 1800))
@@ -13,11 +13,11 @@ ELSE()
 ENDIF()
 
 SET(CPPSRCS
-	src/memory_pool.cpp
+	src/object_pool.cpp
 	)
 
 SET(CPPHDRS
-	src/memory_pool.hpp
+	src/object_pool.hpp
 	)
 
 ADD_EXECUTABLE(runtests ${CPPHDRS} ${CPPSRCS} src/catch.hpp src/runtests.cpp)
