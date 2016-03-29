@@ -23,10 +23,10 @@ void alloc_memset_free(T& pool)
         pool.new_index(i);
     }
 
-    const size_t value_size = sizeof(typename T::value_type);
-    for (size_t i =0; i < 128; ++i)
+    const size_t value_size = sizeof(typename T::value_t);
+    for (int i =0; i < 128; ++i)
     {
-        pool.for_each([i, value_size](typename T::value_type * ptr)
+        pool.for_each([i, value_size](typename T::value_t * ptr)
         {
             ::memset(ptr, i, value_size);
         });
@@ -46,10 +46,10 @@ template <typename PoolT>
 class SizedPoolAlloc
 {
 public:
-    typedef typename PoolT::value_type value_type;
+    typedef typename PoolT::value_t value_t;
 
     SizedPoolAlloc(size_t block_size, size_t allocs) :
-        pool(block_size),
+        pool(static_cast<PoolT::index_t>(block_size)),
         ptr(allocs, nullptr) {}
     void new_index(size_t i)
     {
@@ -74,8 +74,8 @@ public:
     }
     void memset(int value)
     {
-        const size_t value_size = sizeof(value_type);
-        pool.for_each([value, value_size](value_type * ptr) {
+        const size_t value_size = sizeof(value_t);
+        pool.for_each([value, value_size](value_t * ptr) {
                 ::memset(ptr, value, value_size);
                 });
     }
@@ -86,7 +86,7 @@ public:
 
 private:
     PoolT pool;
-    std::vector<value_type *> ptr;
+    std::vector<value_t *> ptr;
 };
 
 #define BENCH_HEAP_ALLOC
@@ -96,13 +96,13 @@ template <size_t N>
 class SizedHeapAlloc
 {
 public:
-    typedef Sized<N> value_type;
+    typedef Sized<N> value_t;
 
     SizedHeapAlloc(size_t /*block_size*/, size_t allocs) :
         ptr(allocs, nullptr) {}
     void new_index(size_t i)
     {
-        ptr[i] = new value_type;
+        ptr[i] = new value_t;
     }
     void delete_index(size_t i)
     {
@@ -131,14 +131,14 @@ public:
     }
     void memset(int value)
     {
-        const size_t value_size = sizeof(value_type);
+        const size_t value_size = sizeof(value_t);
         for (auto p : ptr)
         {
             ::memset(p, value, value_size);
         }
     }
 private:
-    std::vector<value_type *> ptr;
+    std::vector<value_t *> ptr;
 };
 #endif // BENCH_HEAP_ALLOC
 

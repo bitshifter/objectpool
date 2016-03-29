@@ -335,7 +335,7 @@ public:
         int max_desc_len = 20;
         for (const auto & test : bench_runs_)
         {
-            max_desc_len = std::max<int>(strlen(test.desc_), max_desc_len);
+            max_desc_len = std::max(static_cast<int>(strlen(test.desc_)), max_desc_len);
         }
         for (const auto & test : bench_runs_)
         {
