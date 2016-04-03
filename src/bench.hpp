@@ -83,22 +83,21 @@ T percentile_of_sorted(const std::vector<T> & sorted_samples, T pct)
     const auto d = rank - lrank;
     const auto n = static_cast<size_t>(lrank);
     const auto lo = sorted_samples[n];
-    const auto hi = sorted_samples[n+1];
+    const auto hi = sorted_samples[n + 1];
     return lo + (hi - lo) * d;
 }
 
-// Winsorize a set of samples, replacing values above the `100-pct` percentile and below the `pct`
-// percentile with those percentiles themselves. This is a way of minimizing the effect of
+// Winsorize a set of sorted samples, replacing values above the `100-pct` percentile and below the
+// `pct` percentile with those percentiles themselves. This is a way of minimizing the effect of
 // outliers, at the cost of biasing the sample. It differs from trimming in that it does not
 // change the number of samples, just changes the values of those that are outliers.
 //
 // See: http://en.wikipedia.org/wiki/Winsorising
 template <typename T>
-void winsorize(std::vector<T> & samples, T pct) {
-    std::sort(samples.begin(), samples.end());
-    auto lo = percentile_of_sorted(samples, pct);
-    auto hi = percentile_of_sorted(samples, 100 - pct);
-    for (auto & samp : samples)
+void winsorize_sorted(std::vector<T> & sorted_samples, T pct) {
+    auto lo = percentile_of_sorted(sorted_samples, pct);
+    auto hi = percentile_of_sorted(sorted_samples, 100 - pct);
+    for (auto & samp : sorted_samples)
     {
         if (samp > hi)
         {
@@ -112,139 +111,124 @@ void winsorize(std::vector<T> & samples, T pct) {
 }
 
 template <typename T>
-class Summary
+struct Summary
 {
-public:
-    size_t num_iterations;
     size_t num_samples;
+    size_t iter_per_sample;
     T max;
     T min;
     T median;
     T median_abs_dev;
     T median_abs_dev_pct;
 
-    Summary() : num_iterations(0), num_samples(0), max(0), min(0),
+    Summary() : num_samples(0), iter_per_sample(0), max(0), min(0),
         median(0), median_abs_dev(0), median_abs_dev_pct(0) {}
-
-    Summary(const std::vector<T> & samples, size_t iterations) :
-        num_iterations(iterations), num_samples(samples.size())
-    {
-        std::vector<T> sorted_samples(samples);
-        std::sort(sorted_samples.begin(), sorted_samples.end());
-        winsorize(sorted_samples, 5.0);
-        min = sorted_samples.front();
-        max = sorted_samples.back();
-        median = percentile_of_sorted(sorted_samples, T(50));
-        std::vector<T> abs_devs(sorted_samples);
-        for (auto & v : abs_devs)
-        {
-            v = median - v;
-        }
-        median_abs_dev = percentile_of_sorted(abs_devs, T(50)) * T(1.4826);
-        median_abs_dev_pct = T(100) * median_abs_dev / median;
-    }
 };
+
+template <typename T>
+Summary<T> calculate_summary(const std::vector<T> samples, uint64_t iter_per_sample)
+{
+    auto summ = Summary<T>();
+    std::vector<T> sorted_samples(samples);
+    std::sort(sorted_samples.begin(), sorted_samples.end());
+    winsorize_sorted(sorted_samples, 5.0);
+    summ.num_samples = sorted_samples.size();
+    summ.iter_per_sample = iter_per_sample;
+    summ.min = sorted_samples.front();
+    summ.max = sorted_samples.back();
+    summ.median = percentile_of_sorted(sorted_samples, T(50));
+    std::vector<T> abs_devs(sorted_samples);
+    for (auto & v : abs_devs)
+    {
+        v = summ.median - v;
+    }
+    summ.median_abs_dev = percentile_of_sorted(abs_devs, T(50)) * T(1.4826);
+    summ.median_abs_dev_pct = T(100) * summ.median_abs_dev / summ.median;
+    return summ;
+}
+
 } // namespace stats
 
 namespace bench
 {
 
-class Bencher
+std::chrono::nanoseconds bench_n(uint64_t iterations, BenchFuncPtr func)
 {
-    uint64_t iterations_ = 0;
-    std::chrono::nanoseconds duration_ = std::chrono::nanoseconds::zero();
-public:
-    std::chrono::nanoseconds ns_per_iter() const
+    auto loop_start = std::chrono::high_resolution_clock::now();
+    for (uint64_t i = 0; i < iterations; ++i)
     {
-        if (iterations_ != 0)
-        {
-            return duration_ / iterations_;
-        }
-        else
-        {
-            return std::chrono::nanoseconds::zero();
-        }
+        func();
     }
-    void bench_n(uint64_t iterations, BenchFuncPtr func)
+    return (std::chrono::high_resolution_clock::now() - loop_start) / iterations;
+}
+
+stats::Summary<double> auto_bench(BenchFuncPtr func)
+{
+    // initial bench run to get ballpark figure.
+    uint64_t n = 1;
+    const auto ballpark = bench_n(1, func);
+
+    // try to estimate iteration count for 1ms falling back to 1 million
+    // iterations if first run too < 1ns.
+    if (ballpark == std::chrono::nanoseconds::zero())
     {
-        iterations_ = iterations;
-        duration_ = std::chrono::nanoseconds::zero();
+        n = 1000000;
+    }
+    else
+    {
+        n = 1000000 / std::max<uint64_t>(ballpark.count(), 1);
+    }
+
+    // if the first run took more than 1ms we don't want to just
+    // be left doing 0 iterations on every loop. The unfortunate
+    // side effect of not being able to do as many runs is
+    // automatically handled by the statistical analysis below
+    // (i.e. larger error bars).
+    if (n == 0) { n = 1; }
+
+    std::chrono::nanoseconds total_run;
+    std::vector<double> samples(50);
+    std::vector<double> samples5(50);
+
+    for (;;)
+    {
         auto loop_start = std::chrono::high_resolution_clock::now();
-        for (uint64_t i = 0; i < iterations; ++i)
+        for (auto & p : samples)
         {
-            func();
+            auto ns_per_iter = bench_n(n, func);
+            p = static_cast<double>(ns_per_iter.count());
         }
-        duration_ = std::chrono::high_resolution_clock::now() - loop_start;
+
+        for (auto & p : samples5)
+        {
+            auto ns_per_iter = bench_n(n * 5, func);
+            p = static_cast<double>(ns_per_iter.count());
+        }
+
+        // If we've run for 100ms and seem to have converged to a
+        // stable median.
+        auto loop_run = std::chrono::high_resolution_clock::now() - loop_start;
+
+        const auto summ = stats::calculate_summary<double>(samples, n);
+        const auto summ5 = stats::calculate_summary<double>(samples5, n * 5);
+
+        if (loop_run > std::chrono::milliseconds(100) &&
+            summ.median_abs_dev_pct < 1.0 &&
+            summ.median - summ5.median < summ5.median_abs_dev)
+        {
+            return summ5;
+        }
+
+        total_run = total_run + loop_run;
+
+        // Longest we ever run for is 3s.
+        if (total_run > std::chrono::seconds(3)) {
+            return summ5;
+        }
+
+        n *= 2;
     }
-    stats::Summary<double> auto_bench(BenchFuncPtr func)
-    {
-        // initial bench run to get ballpark figure.
-        uint64_t n = 1;
-        bench_n(n, func);
-
-        // try to estimate iteration count for 1ms falling back to 1 million
-        // iterations if first run too < 1ns.
-        if (ns_per_iter() == std::chrono::nanoseconds::zero())
-        {
-            n = 1000000;
-        }
-        else
-        {
-            n = 1000000 / std::max<uint64_t>(ns_per_iter().count(), 1);
-        }
-
-        // if the first run took more than 1ms we don't want to just
-        // be left doing 0 iterations on every loop. The unfortunate
-        // side effect of not being able to do as many runs is
-        // automatically handled by the statistical analysis below
-        // (i.e. larger error bars).
-        if (n == 0) { n = 1; }
-
-        std::chrono::nanoseconds total_run;
-        std::vector<double> samples(50);
-        std::vector<double> samples5(50);
-
-        stats::Summary<double> summ;
-        stats::Summary<double> summ5;
-        for (;;)
-        {
-            auto loop_start = std::chrono::high_resolution_clock::now();
-            for (auto & p : samples)
-            {
-                bench_n(n, func);
-                p = static_cast<double>(ns_per_iter().count());
-            }
-
-            for (auto & p : samples5)
-            {
-                bench_n(n * 5, func);
-                p = static_cast<double>(ns_per_iter().count());
-            }
-
-            // If we've run for 100ms and seem to have converged to a
-            // stable median.
-            auto loop_run = std::chrono::high_resolution_clock::now() - loop_start;
-
-            summ = stats::Summary<double>(samples, n);
-            summ5 = stats::Summary<double>(samples5, n * 5);
-
-            if (loop_run > std::chrono::milliseconds(100) &&
-                summ.median_abs_dev_pct < 1.0 &&
-                summ.median - summ5.median < summ5.median_abs_dev)
-            {
-                return summ5;
-            }
-
-            total_run = total_run + loop_run;
-            // Longest we ever run for is 3s.
-            if (total_run > std::chrono::seconds(3)) {
-                return summ5;
-            }
-
-            n *= 2;
-        }
-    }
-};
+}
 
 struct BenchSamples
 {
@@ -263,7 +247,7 @@ void fmt_bench_samples(const BenchSamples & bs, char * buffer, size_t size)
         snprintf(buffer, size,
             "%9" PRId64 " ns/iter (%4" PRIu64 " iter +/- %5" PRId64 ") = %4" PRIu64 " MB/s",
             static_cast<int64_t>(bs.ns_iter_summ.median),
-            static_cast<uint64_t>(bs.ns_iter_summ.num_iterations * bs.ns_iter_summ.num_samples),
+            static_cast<uint64_t>(bs.ns_iter_summ.iter_per_sample * bs.ns_iter_summ.num_samples),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min),
             bs.mb_s);
     }
@@ -272,7 +256,7 @@ void fmt_bench_samples(const BenchSamples & bs, char * buffer, size_t size)
         snprintf(buffer, size,
             "%9" PRId64 " ns/iter (%4" PRIu64 " iter +/- %5" PRId64 ")",
             static_cast<int64_t>(bs.ns_iter_summ.median),
-            static_cast<uint64_t>(bs.ns_iter_summ.num_iterations * bs.ns_iter_summ.num_samples),
+            static_cast<uint64_t>(bs.ns_iter_summ.iter_per_sample * bs.ns_iter_summ.num_samples),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min));
     }
 }
@@ -285,9 +269,8 @@ void fmt_bench_samples(const BenchSamples & bs, char * buffer, size_t size)
 BenchSamples benchmark(BenchFuncPtr bench_func, uint64_t bench_bytes)
 {
     BenchSamples bs;
-    Bencher b;
 
-    bs.ns_iter_summ = b.auto_bench(bench_func);
+    bs.ns_iter_summ = auto_bench(bench_func);
 
     auto ns_iter = static_cast<uint64_t>(std::max(bs.ns_iter_summ.median, 1.0));
     auto iter_s = 1000000000 / ns_iter;
