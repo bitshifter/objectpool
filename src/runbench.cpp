@@ -49,7 +49,7 @@ public:
     typedef typename PoolT::value_t value_t;
 
     SizedPoolAlloc(size_t block_size, size_t allocs) :
-        pool(static_cast<PoolT::index_t>(block_size)),
+        pool(static_cast<typename PoolT::index_t>(block_size)),
         ptr(allocs, nullptr) {}
     void new_index(size_t i)
     {
