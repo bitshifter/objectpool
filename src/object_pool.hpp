@@ -106,7 +106,7 @@ class FixedObjectPool
 {
 public:
     typedef detail::index_t index_t;
-    typedef T value_type;
+    typedef T value_t;
 
     FixedObjectPool(index_t max_entries);
     ~FixedObjectPool();
@@ -144,7 +144,7 @@ class DynamicObjectPool
 {
 public:
     typedef detail::index_t index_t;
-    typedef T value_type;
+    typedef T value_t;
 
     DynamicObjectPool(index_t entries_per_block);
     ~DynamicObjectPool();
@@ -338,7 +338,7 @@ void ObjectPoolBlock<T>::delete_object(const T * ptr)
         // destruct this object
         ptr->~T();
         // get the index of this pointer
-        const index_t index = ptr - begin;
+        const index_t index = static_cast<index_t>(ptr - begin);
         index_t * indices = indices_begin();
         // assert this index is allocated
         assert(indices[index] == index);
@@ -484,7 +484,7 @@ T * DynamicObjectPool<T>::new_object(P&&... params)
          p_info != p_end && p_info->num_free_ == 0; ++p_info) {}
 
     // update the free block index
-    free_block_index_ = p_info - block_info_;
+    free_block_index_ = static_cast<index_t>(p_info - block_info_);
 
     // if no free blocks found then create a new one
     if (free_block_index_ == num_blocks_)
@@ -516,7 +516,7 @@ void DynamicObjectPool<T>::delete_object(const T * ptr)
         {
             p_info->block_->delete_object(ptr);
             ++p_info->num_free_;
-            const index_t free_block = p_info - block_info_;
+            const index_t free_block = static_cast<index_t>(p_info - block_info_);
             if (free_block < free_block_index_)
             {
                 free_block_index_ = free_block;

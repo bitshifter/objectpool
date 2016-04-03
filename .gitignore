@@ -2,7 +2,8 @@
 *.pyc
 *.sw[a-z]
 CMakeLists.txt.user*
-/build/
+/build/win32-msvc14
+/build/win64-msvc14
 /test
 /test.exe
 Session.vim
