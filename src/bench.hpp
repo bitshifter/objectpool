@@ -256,13 +256,12 @@ struct BenchSamples
 #define snprintf _snprintf_s
 #endif
 
-std::string fmt_bench_samples(const BenchSamples & bs)
+void fmt_bench_samples(const BenchSamples & bs, char * buffer, size_t size)
 {
-    char buffer[1024] = {0};
     if (bs.mb_s)
     {
-        snprintf(buffer, sizeof(buffer),
-            "%9" PRId64 " ns/iter (%5" PRIu64 " iter +/- %" PRId64 ") = %" PRIu64 " MB/s",
+        snprintf(buffer, size,
+            "%9" PRId64 " ns/iter (%4" PRIu64 " iter +/- %5" PRId64 ") = %4" PRIu64 " MB/s",
             static_cast<int64_t>(bs.ns_iter_summ.median),
             static_cast<uint64_t>(bs.ns_iter_summ.num_iterations * bs.ns_iter_summ.num_samples),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min),
@@ -270,13 +269,12 @@ std::string fmt_bench_samples(const BenchSamples & bs)
     }
     else
     {
-        snprintf(buffer, sizeof(buffer),
-            "%9" PRId64 " ns/iter (%5" PRIu64 " iter +/- %" PRId64 ")",
+        snprintf(buffer, size,
+            "%9" PRId64 " ns/iter (%4" PRIu64 " iter +/- %5" PRId64 ")",
             static_cast<int64_t>(bs.ns_iter_summ.median),
             static_cast<uint64_t>(bs.ns_iter_summ.num_iterations * bs.ns_iter_summ.num_samples),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min));
     }
-    return buffer;
 }
 
 #if _MSC_VER
@@ -314,11 +312,12 @@ public:
         {
             max_desc_len = std::max(static_cast<int>(strlen(test.desc_)), max_desc_len);
         }
+        char buffer[1024] = {0};
         for (const auto & test : bench_runs_)
         {
             bench::BenchSamples bs = bench::benchmark(test.func_, test.bytes_);
-            printf("%-*s %s\n", max_desc_len, test.desc_,
-                    bench::fmt_bench_samples(bs).c_str());
+            bench::fmt_bench_samples(bs, buffer, sizeof(buffer));
+            printf("%-*s %s\n", max_desc_len, test.desc_, buffer);
         }
     }
 };
