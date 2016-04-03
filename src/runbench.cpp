@@ -62,10 +62,12 @@ public:
     }
     void delete_all()
     {
-        pool.delete_all();
-        size_t size = ptr.size();
-        ptr.clear();
-        ptr.resize(size, nullptr);
+        // delete individual objects for fair comparison
+        for (size_t i = 0; i < ptr.size(); i++)
+        {
+            pool.delete_object(ptr[i]);
+            ptr[i] = nullptr;
+        }
     }
     template <typename F>
     void for_each(const F func) const
