@@ -115,59 +115,35 @@ template <typename T>
 class Summary
 {
 public:
+    size_t num_iterations;
+    size_t num_samples;
     T max;
     T min;
     T median;
     T median_abs_dev;
     T median_abs_dev_pct;
 
-    Summary() : max(0), min(0), median(0), median_abs_dev(0),
-        median_abs_dev_pct(0) {}
+    Summary() : num_iterations(0), num_samples(0), max(0), min(0),
+        median(0), median_abs_dev(0), median_abs_dev_pct(0) {}
 
-    // TODO: This could be made a lot more efficient by reusing results of
-    // previous calculations.
-    Summary(const std::vector<T> & samples) :
-        max(calc_max(samples)),
-        min(calc_min(samples)),
-        median(calc_median(samples)),
-        median_abs_dev(calc_median_abs_dev(samples)),
-        median_abs_dev_pct(T(100) * median_abs_dev / median) {}
-
-private:
-    T calc_max(const std::vector<T> & samples) const
+    Summary(const std::vector<T> & samples, size_t iterations) :
+        num_iterations(iterations), num_samples(samples.size())
     {
-        return *std::max_element(samples.begin(), samples.end());
-    }
-
-    T calc_min(const std::vector<T> & samples) const
-    {
-        return *std::min_element(samples.begin(), samples.end());
-    }
-
-    T calc_percentile(const std::vector<T> & samples, T pct) const
-    {
-        std::vector<T> tmp(samples);
-        std::sort(tmp.begin(), tmp.end());
-        return percentile_of_sorted(tmp, pct);
-    }
-
-    T calc_median(const std::vector<T> & samples) const
-    {
-        return calc_percentile(samples, T(50));
-    }
-
-    T calc_median_abs_dev(const std::vector<T> & samples) const
-    {
-        const auto med = calc_median(samples);
-        std::vector<T> abs_devs(samples);
+        std::vector<T> sorted_samples(samples);
+        std::sort(sorted_samples.begin(), sorted_samples.end());
+        winsorize(sorted_samples, 5.0);
+        min = sorted_samples.front();
+        max = sorted_samples.back();
+        median = percentile_of_sorted(sorted_samples, T(50));
+        std::vector<T> abs_devs(sorted_samples);
         for (auto & v : abs_devs)
         {
-            v = med - v;
+            v = median - v;
         }
-        return calc_median(abs_devs) * T(1.4826);
+        median_abs_dev = percentile_of_sorted(abs_devs, T(50)) * T(1.4826);
+        median_abs_dev_pct = T(100) * median_abs_dev / median;
     }
 };
-
 } // namespace stats
 
 namespace bench
@@ -226,6 +202,7 @@ public:
 
         std::chrono::nanoseconds total_run;
         std::vector<double> samples(50);
+        std::vector<double> samples5(50);
 
         stats::Summary<double> summ;
         stats::Summary<double> summ5;
@@ -238,21 +215,19 @@ public:
                 p = static_cast<double>(ns_per_iter().count());
             }
 
-            stats::winsorize(samples, 5.0);
-            summ = stats::Summary<double>(samples);
-
-            for (auto & p : samples)
+            for (auto & p : samples5)
             {
                 bench_n(n * 5, func);
                 p = static_cast<double>(ns_per_iter().count());
             }
 
-            stats::winsorize(samples, 5.0);
-            summ5 = stats::Summary<double>(samples);
-
             // If we've run for 100ms and seem to have converged to a
             // stable median.
             auto loop_run = std::chrono::high_resolution_clock::now() - loop_start;
+
+            summ = stats::Summary<double>(samples, n);
+            summ5 = stats::Summary<double>(samples5, n * 5);
+
             if (loop_run > std::chrono::milliseconds(100) &&
                 summ.median_abs_dev_pct < 1.0 &&
                 summ.median - summ5.median < summ5.median_abs_dev)
@@ -287,16 +262,18 @@ std::string fmt_bench_samples(const BenchSamples & bs)
     if (bs.mb_s)
     {
         snprintf(buffer, sizeof(buffer),
-            "%9" PRId64 " ns/iter (+/- %" PRId64 ") = %" PRIu64 " MB/s",
+            "%9" PRId64 " ns/iter (%5" PRIu64 " iter +/- %" PRId64 ") = %" PRIu64 " MB/s",
             static_cast<int64_t>(bs.ns_iter_summ.median),
+            static_cast<uint64_t>(bs.ns_iter_summ.num_iterations * bs.ns_iter_summ.num_samples),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min),
             bs.mb_s);
     }
     else
     {
         snprintf(buffer, sizeof(buffer),
-            "%9" PRId64 " ns/iter (+/- %" PRId64 ")",
+            "%9" PRId64 " ns/iter (%5" PRIu64 " iter +/- %" PRId64 ")",
             static_cast<int64_t>(bs.ns_iter_summ.median),
+            static_cast<uint64_t>(bs.ns_iter_summ.num_iterations * bs.ns_iter_summ.num_samples),
             static_cast<int64_t>(bs.ns_iter_summ.max - bs.ns_iter_summ.min));
     }
     return buffer;
