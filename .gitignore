@@ -2,6 +2,7 @@
 *.pyc
 *.sw[a-z]
 CMakeLists.txt.user*
+/build/linux-gcc
 /build/win32-msvc14
 /build/win64-msvc14
 /test
