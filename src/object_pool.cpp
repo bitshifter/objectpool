@@ -25,7 +25,8 @@
 #include <limits>
 #include <memory>
 
-namespace detail {
+namespace detail
+{
 
 /// Aligns n to align. N will be unchanged if it is already aligned
 size_t align_to(size_t n, size_t align)
@@ -33,20 +34,20 @@ size_t align_to(size_t n, size_t align)
     return (1 + (n - 1) / align) * align;
 }
 
-void * aligned_malloc(size_t size, size_t align)
+void* aligned_malloc(size_t size, size_t align)
 {
-#if defined( _WIN32 )
+#if defined(_WIN32)
     return _aligned_malloc(size, align);
 #else
-    void * ptr;
+    void* ptr;
     int result = posix_memalign(&ptr, align, size);
     return result == 0 ? ptr : nullptr;
 #endif
 }
 
-void aligned_free(void * ptr)
+void aligned_free(void* ptr)
 {
-#if defined( _WIN32 )
+#if defined(_WIN32)
     _aligned_free(ptr);
 #else
     std::free(ptr);
@@ -54,7 +55,7 @@ void aligned_free(void * ptr)
 }
 
 /// Returns true if the pointer is of the given alignment
-inline bool is_aligned_to(const void * ptr, size_t align)
+inline bool is_aligned_to(const void* ptr, size_t align)
 {
     return (reinterpret_cast<uintptr_t>(ptr) & (align - 1)) == 0;
 }
@@ -93,24 +94,24 @@ namespace tests
 using detail::is_aligned_to;
 
 template <typename PoolT>
-void singleNewAndDelete(PoolT & mp)
+void singleNewAndDelete(PoolT& mp)
 {
-    uint32_t * p = mp.new_object(0xaabbccdd);
+    uint32_t* p = mp.new_object(0xaabbccdd);
     REQUIRE(p != nullptr);
     CHECK(is_aligned_to(p, 4));
     // should be aligned to the cache line size
-    //CHECK(is_aligned_to(p, MIN_BLOCK_ALIGN));
+    // CHECK(is_aligned_to(p, MIN_BLOCK_ALIGN));
     CHECK(*p == 0xaabbccdd);
     mp.delete_object(p);
 }
 
 template <typename PoolT>
-void doubleNewAndDelete(PoolT & mp)
+void doubleNewAndDelete(PoolT& mp)
 {
-    uint32_t * p1 = mp.new_object(0x11223344);
+    uint32_t* p1 = mp.new_object(0x11223344);
     REQUIRE(p1 != nullptr);
     CHECK(is_aligned_to(p1, 4));
-    uint32_t * p2 = mp.new_object(0x55667788);
+    uint32_t* p2 = mp.new_object(0x55667788);
     REQUIRE(p2 != nullptr);
     CHECK(is_aligned_to(p2, 4));
     CHECK(p2 == p1 + 1);
@@ -121,12 +122,12 @@ void doubleNewAndDelete(PoolT & mp)
 }
 
 template <typename PoolT>
-void blockFillAndFree(PoolT & mp, size_t size)
+void blockFillAndFree(PoolT& mp, size_t size)
 {
-    std::vector<uint32_t *> v;
+    std::vector<uint32_t*> v;
     for (size_t i = 0; i < size; ++i)
     {
-        uint32_t * p = mp.new_object(1 << i);
+        uint32_t* p = mp.new_object(1 << i);
         REQUIRE(p != nullptr);
         CHECK(*p == 1u << i);
         v.push_back(p);
@@ -139,14 +140,14 @@ void blockFillAndFree(PoolT & mp, size_t size)
 }
 
 template <typename PoolT>
-void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_blocks)
+void iterateFullBlocks(PoolT& mp, const size_t size, const size_t expected_blocks)
 {
     const size_t half_size = size >> 1;
-    std::vector<uint32_t *> v;
+    std::vector<uint32_t*> v;
     size_t i;
     for (i = 0; i < size; ++i)
     {
-        uint32_t * p = mp.new_object(1 << i);
+        uint32_t* p = mp.new_object(1 << i);
         REQUIRE(p != nullptr);
         CHECK(*p == 1u << i);
         v.push_back(p);
@@ -169,7 +170,7 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
     // delete every second entry
     for (i = 1; i < size; i += 2)
     {
-        uint32_t * p = v[i];
+        uint32_t* p = v[i];
         v[i] = nullptr;
         mp.delete_object(p);
     }
@@ -183,11 +184,11 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
 
     // check remaining objects
     i = 0;
-    mp.for_each([&i](const uint32_t * itr)
-    {
-        CHECK(*itr == 1u << i);
-        i += 2;
-    });
+    mp.for_each([&i](const uint32_t* itr)
+        {
+            CHECK(*itr == 1u << i);
+            i += 2;
+        });
     /*
        for (i = 0; i < size; i += 2)
        {
@@ -212,7 +213,7 @@ void iterateFullBlocks(PoolT & mp, const size_t size, const size_t expected_bloc
     // delete objects in second block
     for (i = half_size; i < size; ++i)
     {
-        uint32_t * p = v[i];
+        uint32_t* p = v[i];
         v[i] = nullptr;
         mp.delete_object(p);
     }
