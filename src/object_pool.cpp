@@ -28,12 +28,6 @@
 namespace detail
 {
 
-/// Aligns n to align. N will be unchanged if it is already aligned
-size_t align_to(size_t n, size_t align)
-{
-    return (1 + (n - 1) / align) * align;
-}
-
 void* aligned_malloc(size_t size, size_t align)
 {
 #if defined(_WIN32)
@@ -60,23 +54,6 @@ inline bool is_aligned_to(const void* ptr, size_t align)
     return (reinterpret_cast<uintptr_t>(ptr) & (align - 1)) == 0;
 }
 
-/// Returns true if the given value is a power of two
-inline bool is_power_of_2(uint32_t x)
-{
-    return ((x != 0) && ((x & (~x + 1)) == x));
-}
-
-/// Returns the exponent of a power of 2
-inline uint32_t log2(uint32_t n)
-{
-#if _MSC_VER
-    unsigned long i;
-    _BitScanForward(&i, n);
-    return i;
-#else
-    return __builtin_ctz(n);
-#endif
-}
 } // namespace detail
 
 
