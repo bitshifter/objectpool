@@ -17,7 +17,7 @@ void* aligned_malloc(size_t size, size_t align);
 void aligned_free(void* ptr);
 
 // Aligns n to align. N will be unchanged if it is already aligned
-size_t align_to(size_t n, size_t align)
+inline size_t align_to(size_t n, size_t align)
 {
     return (1 + (n - 1) / align) * align;
 }
