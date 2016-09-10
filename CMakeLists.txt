@@ -20,7 +20,8 @@ set(CPPHDRS
 	src/object_pool.hpp
 	)
 
-add_executable(runtests ${CPPHDRS} ${CPPSRCS} src/catch.hpp src/runtests.cpp)
+add_executable(runtests ${CPPHDRS} ${CPPSRCS} src/runtests.cpp)
+target_include_directories(runtests PRIVATE thirdparty/Catch)
 target_compile_definitions(runtests PRIVATE -DUNIT_TESTS)
 add_executable(runbench ${CPPHDRS} ${CPPSRCS} src/bench.hpp src/runbench.cpp)
 target_compile_definitions(runbench PRIVATE -DBENCHMARKS)
