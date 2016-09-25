@@ -46,6 +46,9 @@ flags = [
 '/usr/include',
 '-isystem',
 '/usr/local/include',
+'-I', 'src',
+'-I', 'thirdparty/nonius',
+'-I', 'thirdparty/Catch',
 ]
 
 
@@ -99,7 +102,7 @@ def MakeRelativePathsInFlagsAbsolute( flags, working_directory ):
 
 def IsHeaderFile( filename ):
   extension = os.path.splitext( filename )[ 1 ]
-  return extension in [ '.h', '.hxx', '.hpp', '.hh' ]
+  return extension in ['.h', '.hxx', '.hpp', '.hh', '.h++']
 
 
 def GetCompilationInfoForFile( filename ):

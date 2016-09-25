@@ -1,10 +1,14 @@
-#define BENCH_CONFIG_MAIN // This tells Bench to provide a main() - only do this in one cpp file
-#include "bench.hpp"
+#define NONIUS_RUNNER
+#include "nonius.hpp"
+
 #include "object_pool.hpp"
 
 #ifdef BENCH_BOOST_POOL
 #include <boost/pool/object_pool.hpp>
 #endif
+
+namespace 
+{
 
 /// Test which allocates a number of objects then frees them all
 template <typename T>
@@ -183,6 +187,44 @@ private:
 
 // I am a bad person. Bad and lazy.
 
+struct BenchmarkRegistrar
+{
+    BenchmarkRegistrar()
+    {
+        static const size_t num_allocs = 1000;
+        auto& registry = nonius::global_benchmark_registry();
+        registry.emplace_back("FixedObjectPool<Sized<16>> alloc+free", [](nonius::chronometer meter) {
+                SizedPoolAlloc<FixedObjectPool<Sized<16>>> pool(num_allocs, num_allocs);
+                meter.measure([&pool]{
+                        alloc_free(pool);
+                        });
+                });
+        registry.emplace_back("DynamicObjectPool<Sized<16>> 64 byte blocks alloc+free",
+                [](nonius::chronometer meter) {
+                SizedPoolAlloc<DynamicObjectPool<Sized<16>>> pool(64, num_allocs);
+                meter.measure([&pool]{
+                        alloc_free(pool);
+                        });
+                });
+        registry.emplace_back("DynamicObjectPool<Sized<16>> 128 byte blocks alloc+free",
+                [](nonius::chronometer meter) {
+                SizedPoolAlloc<DynamicObjectPool<Sized<16>>> pool(128, num_allocs);
+                meter.measure([&pool]{
+                        alloc_free(pool);
+                        });
+                });
+        registry.emplace_back("DynamicObjectPool<Sized<16>> 256 byte blocks alloc+free",
+                [](nonius::chronometer meter) {
+                SizedPoolAlloc<DynamicObjectPool<Sized<16>>> pool(256, num_allocs);
+                meter.measure([&pool]{
+                        alloc_free(pool);
+                        });
+                });
+    }
+};
+
+BenchmarkRegistrar g_benchmark_registrar;
+
 #define STRINGIFY2(expr) #expr
 #define STRINGIFY(expr) STRINGIFY2(expr)
 
@@ -218,6 +260,7 @@ private:
 #define BOOST_BENCH_TEST(run, value_size, block_size)
 #endif
 
+#if 0
 FIXED_POOL_BENCH_TEST(alloc_free, 16, 1000)
 DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 64, 1000)
 DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 128, 1000)
@@ -259,3 +302,6 @@ DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 128, 1000)
 DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 256, 1000)
 HEAP_BENCH_TEST(alloc_memset_free, 512, 1000)
 BOOST_BENCH_TEST(alloc_memset_free, 512, 1000)
+#endif
+
+} // anonymous namespace
