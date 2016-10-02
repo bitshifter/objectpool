@@ -297,8 +297,7 @@ T* DynamicObjectPool<T>::new_object(P&&... params)
     // search for a block with free space
     BlockInfo* p_info = block_info_ + free_block_index_;
     for (const BlockInfo* p_end = block_info_ + num_blocks_;
-         p_info != p_end && p_info->num_free_ == 0;
-         ++p_info)
+         p_info != p_end && p_info->num_free_ == 0; ++p_info)
     {
     }
 
@@ -445,4 +444,3 @@ ObjectPoolStats DynamicObjectPool<T>::calc_stats() const
 }
 
 #endif // _BITS_OBJECT_POOL_INL_
-

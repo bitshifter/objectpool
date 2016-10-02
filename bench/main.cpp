@@ -9,7 +9,7 @@
 
 // I'm using a lot of templates to minimise copy paste for different benchmarking configurations.
 
-namespace 
+namespace
 {
 
 /// Test which allocates a number of objects then frees them all
@@ -82,7 +82,7 @@ public:
     {
         // delete individual objects for fair comparison
         pool.delete_all();
-        //for (auto & p : ptr)
+        // for (auto & p : ptr)
         //{
         //    pool.delete_object(p);
         //    p = nullptr;
@@ -121,10 +121,10 @@ public:
     void new_index(size_t i) { ptr[i] = new value_t; }
     void delete_all()
     {
-        for (auto & p : ptr)
+        for (auto& p : ptr)
         {
             delete p;
-         //   p = nullptr;
+            //   p = nullptr;
         }
     }
     template <typename F>
@@ -160,7 +160,10 @@ public:
     typedef boost::object_pool<value_t> PoolT;
 
     BoostPoolHarness(size_t block_size, size_t allocs)
-        : pool(new PoolT(block_size, allocs)), ptr(allocs, nullptr), block_size(block_size), allocs(allocs)
+        : pool(new PoolT(block_size, allocs)),
+          ptr(allocs, nullptr),
+          block_size(block_size),
+          allocs(allocs)
     {
     }
     void new_index(size_t i) { ptr[i] = pool->construct(); }
@@ -168,7 +171,7 @@ public:
     {
         // boost pool cleans up all objects on destruction
         pool.reset(new PoolT(block_size, allocs));
-        //for (auto & p : ptr)
+        // for (auto & p : ptr)
         //{
         //    pool.destroy(p);
         //    p = nullptr;
@@ -214,12 +217,14 @@ void run_for_size(nonius::benchmark_registry& registry, size_t num_allocs)
         const auto block_size = num_allocs;
         snprintf(label, label_size, "FixedObjectPool<Sized<%zu>> %s", Size, bench_test.name());
         registry.emplace_back(label,
-                [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
-                ObjectPoolHarness<FixedObjectPool<SizedN>> pool(block_size, num_allocs);
-                meter.measure([&bench_test, &pool]{
+            [&bench_test, block_size, num_allocs](nonius::chronometer meter)
+            {
+                ObjectPoolHarness<FixedObjectPool<SizedN> > pool(block_size, num_allocs);
+                meter.measure([&bench_test, &pool]
+                    {
                         return bench_test.run(pool);
-                        });
-                });
+                    });
+            });
     }
 
     // DynamicObjectPool alloc+free benches
@@ -227,14 +232,17 @@ void run_for_size(nonius::benchmark_registry& registry, size_t num_allocs)
         static const size_t block_sizes[3] = {64, 128, 256};
         for (auto block_size : block_sizes)
         {
-            snprintf(label, label_size, "DynamicObjectPool<Sized<%zu>> %zu byte blocks %s", Size, block_size, bench_test.name());
+            snprintf(label, label_size, "DynamicObjectPool<Sized<%zu>> %zu byte blocks %s", Size,
+                block_size, bench_test.name());
             registry.emplace_back(label,
-                    [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
-                    ObjectPoolHarness<DynamicObjectPool<SizedN>> pool(block_size, num_allocs);
-                    meter.measure([&bench_test, &pool]{
+                [&bench_test, block_size, num_allocs](nonius::chronometer meter)
+                {
+                    ObjectPoolHarness<DynamicObjectPool<SizedN> > pool(block_size, num_allocs);
+                    meter.measure([&bench_test, &pool]
+                        {
                             return bench_test.run(pool);
-                            });
-                    });
+                        });
+                });
         }
     }
 
@@ -244,12 +252,14 @@ void run_for_size(nonius::benchmark_registry& registry, size_t num_allocs)
         const auto block_size = num_allocs;
         snprintf(label, label_size, "BoostPoolHarness<Sized<%zu>> %s", Size, bench_test.name());
         registry.emplace_back(label,
-                [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
+            [&bench_test, block_size, num_allocs](nonius::chronometer meter)
+            {
                 BoostPoolHarness<SizedN> pool(block_size, num_allocs);
-                meter.measure([&bench_test, &pool]{
+                meter.measure([&bench_test, &pool]
+                    {
                         return bench_test.run(pool);
-                        });
-                });
+                    });
+            });
     }
 #endif // BENCH_BOOST_POOL
 
@@ -259,12 +269,14 @@ void run_for_size(nonius::benchmark_registry& registry, size_t num_allocs)
         const auto block_size = num_allocs;
         snprintf(label, label_size, "HeapAllocHarness<Sized<%zu>> %s", Size, bench_test.name());
         registry.emplace_back(label,
-                [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
+            [&bench_test, block_size, num_allocs](nonius::chronometer meter)
+            {
                 HeapAllocHarness<SizedN> pool(block_size, num_allocs);
-                meter.measure([&bench_test, &pool]{
+                meter.measure([&bench_test, &pool]
+                    {
                         return bench_test.run(pool);
-                        });
-                });
+                    });
+            });
     }
 #endif // BENCH_HEAP_ALLOC
 }
@@ -291,4 +303,3 @@ struct BenchmarkRegistrar
 BenchmarkRegistrar g_benchmark_registrar;
 
 } // anonymous namespace
-
