@@ -7,41 +7,55 @@
 #include <boost/pool/object_pool.hpp>
 #endif
 
+// I'm using a lot of templates to minimise copy paste for different benchmarking configurations.
+
 namespace 
 {
 
 /// Test which allocates a number of objects then frees them all
-template <typename T>
-void alloc_free(T& pool)
+struct BenchAllocFree
 {
-    for (size_t i = 0; i < pool.count(); i++)
+    const char* name() const { return "alloc+free"; }
+    template <typename HarnessT>
+    size_t run(HarnessT& harness) const
     {
-        pool.new_index(i);
+        for (size_t i = 0; i < harness.count(); i++)
+        {
+            harness.new_index(i);
+        }
+        harness.delete_all();
+
+        return harness.count();
     }
-    pool.delete_all();
-}
+};
 
 /// Test which allocates a number of objects, memsets their contents a number
 /// of times then deletes all of the objects again.
-template <typename T>
-void alloc_memset_free(T& pool)
+struct BenchAllocMemsetFree
 {
-    for (size_t i = 0; i < pool.count(); i++)
+    const char* name() const { return "alloc+memset+free"; }
+    template <typename HarnessT>
+    size_t run(HarnessT& harness) const
     {
-        pool.new_index(i);
-    }
+        for (size_t i = 0; i < harness.count(); i++)
+        {
+            harness.new_index(i);
+        }
 
-    const size_t value_size = sizeof(typename T::value_t);
-    for (int i = 0; i < 128; ++i)
-    {
-        pool.for_each([i, value_size](typename T::value_t* ptr)
-            {
-                ::memset(ptr, i, value_size);
-            });
-    }
+        const size_t value_size = sizeof(typename HarnessT::value_t);
+        for (int i = 0; i < 1024; ++i)
+        {
+            harness.for_each([i, value_size](typename HarnessT::value_t* ptr)
+                {
+                    ::memset(ptr, i, value_size);
+                });
+        }
 
-    pool.delete_all();
-}
+        harness.delete_all();
+
+        return harness.count();
+    }
+};
 
 /// A struct which is the size of the given template parameter
 template <size_t N>
@@ -50,16 +64,16 @@ struct Sized
     char c[N];
 };
 
-/// Test harness for running benchmark tests using the pool allocator.
+/// Test harness for running benchmark tests using the object pool allocator.
 /// Maintains a std::vector of pointers to match behaviour of the default
 /// allocator implementation.
 template <typename PoolT>
-class SizedPoolAlloc
+class ObjectPoolHarness
 {
 public:
     typedef typename PoolT::value_t value_t;
 
-    SizedPoolAlloc(size_t block_size, size_t allocs)
+    ObjectPoolHarness(size_t block_size, size_t allocs)
         : pool(static_cast<typename PoolT::index_t>(block_size)), ptr(allocs, nullptr)
     {
     }
@@ -97,13 +111,13 @@ private:
 #define BENCH_HEAP_ALLOC
 #ifdef BENCH_HEAP_ALLOC
 /// Test harness for running benchmark tests using the default system allocator.
-template <size_t N>
-class SizedHeapAlloc
+template <typename T>
+class HeapAllocHarness
 {
 public:
-    typedef Sized<N> value_t;
+    typedef T value_t;
 
-    SizedHeapAlloc(size_t /*block_size*/, size_t allocs) : ptr(allocs, nullptr) {}
+    HeapAllocHarness(size_t /*block_size*/, size_t allocs) : ptr(allocs, nullptr) {}
     void new_index(size_t i) { ptr[i] = new value_t; }
     void delete_all()
     {
@@ -137,14 +151,15 @@ private:
 #endif // BENCH_HEAP_ALLOC
 
 #ifdef BENCH_BOOST_POOL
-template <size_t N>
-class SizedBoostAlloc
+// Test harness for running benchmark tests using boost::object_pool.
+template <typename T>
+class BoostPoolHarness
 {
 public:
-    typedef Sized<N> value_t;
+    typedef T value_t;
     typedef boost::object_pool<value_t> PoolT;
 
-    SizedBoostAlloc(size_t block_size, size_t allocs)
+    BoostPoolHarness(size_t block_size, size_t allocs)
         : pool(new PoolT(block_size, allocs)), ptr(allocs, nullptr), block_size(block_size), allocs(allocs)
     {
     }
@@ -185,123 +200,95 @@ private:
 };
 #endif // BENCH_BOOST_POOL
 
-// I am a bad person. Bad and lazy.
+// templated function for running permuations of test and object sizes
+template <size_t Size, typename Test>
+void run_for_size(nonius::benchmark_registry& registry, size_t num_allocs)
+{
+    typedef Sized<Size> SizedN;
+    static const size_t label_size = 1024;
+    char label[1024] = {};
+    const Test bench_test;
 
+    // FixedObjectPool alloc+free bench
+    {
+        const auto block_size = num_allocs;
+        snprintf(label, label_size, "FixedObjectPool<Sized<%zu>> %s", Size, bench_test.name());
+        registry.emplace_back(label,
+                [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
+                ObjectPoolHarness<FixedObjectPool<SizedN>> pool(block_size, num_allocs);
+                meter.measure([&bench_test, &pool]{
+                        return bench_test.run(pool);
+                        });
+                });
+    }
+
+    // DynamicObjectPool alloc+free benches
+    {
+        static const size_t block_sizes[3] = {64, 128, 256};
+        for (auto block_size : block_sizes)
+        {
+            snprintf(label, label_size, "DynamicObjectPool<Sized<%zu>> %zu byte blocks %s", Size, block_size, bench_test.name());
+            registry.emplace_back(label,
+                    [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
+                    ObjectPoolHarness<DynamicObjectPool<SizedN>> pool(block_size, num_allocs);
+                    meter.measure([&bench_test, &pool]{
+                            return bench_test.run(pool);
+                            });
+                    });
+        }
+    }
+
+#ifdef BENCH_BOOST_POOL
+    // BoostPoolHarness<SizedN> alloc+free bench
+    {
+        const auto block_size = num_allocs;
+        snprintf(label, label_size, "BoostPoolHarness<Sized<%zu>> %s", Size, bench_test.name());
+        registry.emplace_back(label,
+                [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
+                BoostPoolHarness<SizedN> pool(block_size, num_allocs);
+                meter.measure([&bench_test, &pool]{
+                        return bench_test.run(pool);
+                        });
+                });
+    }
+#endif // BENCH_BOOST_POOL
+
+#ifdef BENCH_HEAP_ALLOC
+    // HeapAllocHarness<SizedN> alloc+free bench
+    {
+        const auto block_size = num_allocs;
+        snprintf(label, label_size, "HeapAllocHarness<Sized<%zu>> %s", Size, bench_test.name());
+        registry.emplace_back(label,
+                [&bench_test, block_size, num_allocs](nonius::chronometer meter) {
+                HeapAllocHarness<SizedN> pool(block_size, num_allocs);
+                meter.measure([&bench_test, &pool]{
+                        return bench_test.run(pool);
+                        });
+                });
+    }
+#endif // BENCH_HEAP_ALLOC
+}
+
+// Auto registers tests with Nonius on static constructon.
 struct BenchmarkRegistrar
 {
     BenchmarkRegistrar()
     {
         static const size_t num_allocs = 1000;
         auto& registry = nonius::global_benchmark_registry();
-        registry.emplace_back("FixedObjectPool<Sized<16>> alloc+free", [](nonius::chronometer meter) {
-                SizedPoolAlloc<FixedObjectPool<Sized<16>>> pool(num_allocs, num_allocs);
-                meter.measure([&pool]{
-                        alloc_free(pool);
-                        });
-                });
-        registry.emplace_back("DynamicObjectPool<Sized<16>> 64 byte blocks alloc+free",
-                [](nonius::chronometer meter) {
-                SizedPoolAlloc<DynamicObjectPool<Sized<16>>> pool(64, num_allocs);
-                meter.measure([&pool]{
-                        alloc_free(pool);
-                        });
-                });
-        registry.emplace_back("DynamicObjectPool<Sized<16>> 128 byte blocks alloc+free",
-                [](nonius::chronometer meter) {
-                SizedPoolAlloc<DynamicObjectPool<Sized<16>>> pool(128, num_allocs);
-                meter.measure([&pool]{
-                        alloc_free(pool);
-                        });
-                });
-        registry.emplace_back("DynamicObjectPool<Sized<16>> 256 byte blocks alloc+free",
-                [](nonius::chronometer meter) {
-                SizedPoolAlloc<DynamicObjectPool<Sized<16>>> pool(256, num_allocs);
-                meter.measure([&pool]{
-                        alloc_free(pool);
-                        });
-                });
+
+        // bench alloc+free
+        run_for_size<16, BenchAllocFree>(registry, num_allocs);
+        run_for_size<128, BenchAllocFree>(registry, num_allocs);
+        run_for_size<512, BenchAllocFree>(registry, num_allocs);
+
+        // bench alloc+memset+free
+        run_for_size<16, BenchAllocMemsetFree>(registry, num_allocs);
+        run_for_size<128, BenchAllocMemsetFree>(registry, num_allocs);
+        run_for_size<512, BenchAllocMemsetFree>(registry, num_allocs);
     }
 };
-
 BenchmarkRegistrar g_benchmark_registrar;
 
-#define STRINGIFY2(expr) #expr
-#define STRINGIFY(expr) STRINGIFY2(expr)
-
-#define _CONFIG_BENCH_TEST(type, prefix, run, value_size, block_size, allocs)                      \
-    static type g_##prefix##_##value_size##x##block_size##x##allocs##run##_(block_size, allocs);   \
-    BENCH_TEST(                                                                                    \
-        STRINGIFY(prefix##_##run##_##value_size##x##block_size##x##allocs), allocs* value_size)    \
-    {                                                                                              \
-        run(g_##prefix##_##value_size##x##block_size##x##allocs##run##_);                          \
-    }
-
-
-#define FIXED_POOL_BENCH_TEST(run, value_size, block_size)                                         \
-    _CONFIG_BENCH_TEST(SizedPoolAlloc<FixedObjectPool<Sized<value_size>>>,                         \
-        fixed_pool,                                                                                \
-        run,                                                                                       \
-        value_size,                                                                                \
-        block_size,                                                                                \
-        block_size)
-#define DYNAMIC_POOL_BENCH_TEST(run, value_size, block_size, allocs)                               \
-    _CONFIG_BENCH_TEST(SizedPoolAlloc<DynamicObjectPool<Sized<value_size>>>,                       \
-        dynamic_pool,                                                                              \
-        run,                                                                                       \
-        value_size,                                                                                \
-        block_size,                                                                                \
-        allocs)
-#define HEAP_BENCH_TEST(run, value_size, block_size)                                               \
-    _CONFIG_BENCH_TEST(SizedHeapAlloc<value_size>, heap, run, value_size, block_size, block_size)
-#if BENCH_BOOST_POOL
-#define BOOST_BENCH_TEST(run, value_size, block_size)                                              \
-    _CONFIG_BENCH_TEST(SizedBoostAlloc<value_size>, boost_pool, run, value_size, block_size, block_size)
-#else
-#define BOOST_BENCH_TEST(run, value_size, block_size)
-#endif
-
-#if 0
-FIXED_POOL_BENCH_TEST(alloc_free, 16, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 64, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 16, 256, 1000)
-HEAP_BENCH_TEST(alloc_free, 16, 1000)
-BOOST_BENCH_TEST(alloc_free, 16, 1000)
-
-FIXED_POOL_BENCH_TEST(alloc_free, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 128, 64, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 128, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 128, 256, 1000)
-HEAP_BENCH_TEST(alloc_free, 128, 1000)
-BOOST_BENCH_TEST(alloc_free, 128, 1000)
-
-FIXED_POOL_BENCH_TEST(alloc_free, 512, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 512, 64, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 512, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_free, 512, 256, 1000)
-HEAP_BENCH_TEST(alloc_free, 512, 1000)
-BOOST_BENCH_TEST(alloc_free, 512, 1000)
-
-FIXED_POOL_BENCH_TEST(alloc_memset_free, 16, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 16, 64, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 16, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 16, 256, 1000)
-HEAP_BENCH_TEST(alloc_memset_free, 16, 1000)
-BOOST_BENCH_TEST(alloc_memset_free, 16, 1000)
-
-FIXED_POOL_BENCH_TEST(alloc_memset_free, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 128, 64, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 128, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 128, 256, 1000)
-HEAP_BENCH_TEST(alloc_memset_free, 128, 1000)
-BOOST_BENCH_TEST(alloc_memset_free, 128, 1000)
-
-FIXED_POOL_BENCH_TEST(alloc_memset_free, 512, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 64, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 128, 1000)
-DYNAMIC_POOL_BENCH_TEST(alloc_memset_free, 512, 256, 1000)
-HEAP_BENCH_TEST(alloc_memset_free, 512, 1000)
-BOOST_BENCH_TEST(alloc_memset_free, 512, 1000)
-#endif
-
 } // anonymous namespace
+
