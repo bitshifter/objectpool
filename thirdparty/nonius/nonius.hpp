@@ -9,7 +9,7 @@
 // You should have received a copy of the CC0 Public Domain Dedication along with this software.
 // If not, see <http://creativecommons.org/publicdomain/zero/1.0/>
 
-// This file was automatically generated on 2016-09-25T02:37:35.142620Z
+// This file was automatically generated on 2016-11-15T10:43:36.670690Z
 // Do not edit it directly
 
 #ifndef NONIUS_SINGLE_INCLUDE_HPP
@@ -238,10 +238,10 @@ namespace nonius {
 #   define NONIUS_NOEXCEPT noexcept
 #endif
 
-#include <boost/lexical_cast.hpp>
 #include <unordered_map>
 #include <typeinfo>
 #include <memory>
+#include <sstream>
 
 namespace nonius {
 
@@ -410,7 +410,136 @@ struct scoped_param_declaration : param_declaration<Tag> {
     }                                                                   \
     //
 
-#include <boost/optional.hpp>
+// #included from: detail/optional.h++
+// Nonius - C++ benchmarking tool
+//
+// Written in 2014- by the nonius contributors <nonius@rmf.io>
+//
+// To the extent possible under law, the author(s) have dedicated all copyright and related
+// and neighboring rights to this software to the public domain worldwide. This software is
+// distributed without any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>
+
+// Simple optional type implementation partially based on C++17 interface
+
+#define NONIUS_OPTIONAL_HPP
+
+#include <type_traits>
+#include <cassert>
+
+namespace nonius {
+    struct nullopt_t {
+        constexpr nullopt_t(int) {}
+    };
+    constexpr nullopt_t nullopt() { return {0}; }
+
+    template <typename T>
+    class optional {
+        typename std::aligned_storage<sizeof(T), alignof(T)>::type storage;
+        bool initialized;
+
+        T& get_impl() {
+            assert(initialized);
+            return *reinterpret_cast<T*>(&storage);
+        }
+        T const& get_impl() const {
+            assert(initialized);
+            return *reinterpret_cast<T const*>(&storage);
+        }
+
+        void construct(T const& value) {
+            assert(!initialized);
+            new (&storage) T(value);
+            initialized = true;
+        }
+        void construct(T&& value) {
+            assert(!initialized);
+            new (&storage) T(std::move(value));
+            initialized = true;
+        }
+        void destroy() {
+            if (initialized) {
+                get_impl().~T();
+                initialized = false;
+            }
+        }
+        optional<T>& assign(T const& value) {
+            destroy();
+            construct(value);
+            return *this;
+        }
+        optional<T>& assign(T&& value) {
+            destroy();
+            construct(std::move(value));
+            return *this;
+        }
+    public:
+        constexpr optional() : initialized(false) {}
+        constexpr optional(nullopt_t) : initialized(false) {}
+        optional(optional<T> const& rhs) : initialized(false) {
+            if (rhs.initialized) {
+                construct(rhs.get_impl());
+            }
+        }
+        optional(optional<T>&& rhs) : initialized(false) {
+            if (rhs.initialized) {
+                construct(std::move(rhs.get_impl()));
+            }
+        }
+        optional(T const& value) : initialized(false) {
+            construct(value);
+        }
+        optional(T&& value) : initialized(false) {
+            construct(std::move(value));
+        }
+        ~optional() {
+            destroy();
+        }
+
+        optional<T>& operator=(optional<T> const& rhs) {
+            destroy();
+            if (rhs.initialized) {
+                construct(rhs.get_impl());
+            }
+            return *this;
+        }
+        optional<T>& operator=(optional<T> && rhs) {
+            destroy();
+            if (rhs.initialized) {
+                construct(std::move(rhs.get_impl()));
+            }
+            return *this;
+        }
+        optional<T>& operator=(T const& rhs) {
+            destroy();
+            construct(rhs);
+            return *this;
+        }
+        optional<T>& operator=(T&& rhs) {
+            destroy();
+            construct(std::move(rhs));
+            return *this;
+        }
+        optional<T>& operator=(nullopt_t) {
+            destroy();
+            return *this;
+        }
+
+        constexpr T const* operator->() const { return &get_impl(); }
+        T* operator->() { return &get_impl(); }
+
+        constexpr T const& operator*() const { return get_impl(); }
+        T& operator*() { return get_impl(); }
+
+        constexpr bool has_value() const { return initialized; }
+        constexpr explicit operator bool() const { return initialized; }
+
+        constexpr bool operator!() const { return !initialized; }
+    };
+} // namespace nonius
+
 #include <string>
 #include <vector>
 
@@ -425,7 +554,7 @@ namespace nonius {
 
     struct param_configuration {
         parameters map;
-        boost::optional<run_configuration> run;
+        optional<run_configuration> run;
     };
 
     struct configuration {
@@ -676,8 +805,6 @@ namespace nonius {
     } // namespace detail
 } // namespace nonius
 
-#include <boost/lexical_cast.hpp>
-
 namespace nonius {
     namespace detail {
         struct chronometer_concept {
@@ -733,6 +860,7 @@ namespace nonius {
     };
 } // namespace nonius
 
+#include <cassert>
 #include <type_traits>
 #include <utility>
 #include <memory>
@@ -1002,6 +1130,8 @@ namespace nonius {
         }
     } // namespace detail
 } // namespace nonius
+
+#include <algorithm>
 
 namespace nonius {
     template <typename Duration>
@@ -1724,9 +1854,8 @@ namespace nonius {
 
 #define NONIUS_DETAIL_ANALYSIS_HPP
 
-#include <boost/math/distributions/normal.hpp>
-
 #include <algorithm>
+#include <cassert>
 #include <functional>
 #include <iterator>
 #include <vector>
@@ -1830,10 +1959,109 @@ namespace nonius {
             return results;
         }
 
+        inline double normal_cdf(double x) {
+            return std::erfc(-x / std::sqrt(2.0)) / 2.0;
+        }
+
+        inline double erf_inv(double x) {
+            // Code accompanying the article "Approximating the erfinv function" in GPU Computing Gems, Volume 2
+            double w, p;
+
+            w = - log((1.0-x)*(1.0+x));
+
+            if (w < 6.250000) {
+                w = w - 3.125000;
+                p =  -3.6444120640178196996e-21;
+                p =   -1.685059138182016589e-19 + p*w;
+                p =   1.2858480715256400167e-18 + p*w;
+                p =    1.115787767802518096e-17 + p*w;
+                p =   -1.333171662854620906e-16 + p*w;
+                p =   2.0972767875968561637e-17 + p*w;
+                p =   6.6376381343583238325e-15 + p*w;
+                p =  -4.0545662729752068639e-14 + p*w;
+                p =  -8.1519341976054721522e-14 + p*w;
+                p =   2.6335093153082322977e-12 + p*w;
+                p =  -1.2975133253453532498e-11 + p*w;
+                p =  -5.4154120542946279317e-11 + p*w;
+                p =    1.051212273321532285e-09 + p*w;
+                p =  -4.1126339803469836976e-09 + p*w;
+                p =  -2.9070369957882005086e-08 + p*w;
+                p =   4.2347877827932403518e-07 + p*w;
+                p =  -1.3654692000834678645e-06 + p*w;
+                p =  -1.3882523362786468719e-05 + p*w;
+                p =    0.0001867342080340571352 + p*w;
+                p =  -0.00074070253416626697512 + p*w;
+                p =   -0.0060336708714301490533 + p*w;
+                p =      0.24015818242558961693 + p*w;
+                p =       1.6536545626831027356 + p*w;
+            }
+            else if (w < 16.000000) {
+                w = sqrt(w) - 3.250000;
+                p =   2.2137376921775787049e-09;
+                p =   9.0756561938885390979e-08 + p*w;
+                p =  -2.7517406297064545428e-07 + p*w;
+                p =   1.8239629214389227755e-08 + p*w;
+                p =   1.5027403968909827627e-06 + p*w;
+                p =   -4.013867526981545969e-06 + p*w;
+                p =   2.9234449089955446044e-06 + p*w;
+                p =   1.2475304481671778723e-05 + p*w;
+                p =  -4.7318229009055733981e-05 + p*w;
+                p =   6.8284851459573175448e-05 + p*w;
+                p =   2.4031110387097893999e-05 + p*w;
+                p =   -0.0003550375203628474796 + p*w;
+                p =   0.00095328937973738049703 + p*w;
+                p =   -0.0016882755560235047313 + p*w;
+                p =    0.0024914420961078508066 + p*w;
+                p =   -0.0037512085075692412107 + p*w;
+                p =     0.005370914553590063617 + p*w;
+                p =       1.0052589676941592334 + p*w;
+                p =       3.0838856104922207635 + p*w;
+            }
+            else {
+                w = sqrt(w) - 5.000000;
+                p =  -2.7109920616438573243e-11;
+                p =  -2.5556418169965252055e-10 + p*w;
+                p =   1.5076572693500548083e-09 + p*w;
+                p =  -3.7894654401267369937e-09 + p*w;
+                p =   7.6157012080783393804e-09 + p*w;
+                p =  -1.4960026627149240478e-08 + p*w;
+                p =   2.9147953450901080826e-08 + p*w;
+                p =  -6.7711997758452339498e-08 + p*w;
+                p =   2.2900482228026654717e-07 + p*w;
+                p =  -9.9298272942317002539e-07 + p*w;
+                p =   4.5260625972231537039e-06 + p*w;
+                p =  -1.9681778105531670567e-05 + p*w;
+                p =   7.5995277030017761139e-05 + p*w;
+                p =  -0.00021503011930044477347 + p*w;
+                p =  -0.00013871931833623122026 + p*w;
+                p =       1.0103004648645343977 + p*w;
+                p =       4.8499064014085844221 + p*w;
+            }
+            return p*x;
+        }
+
+        inline double erfc_inv(double x) {
+            return erf_inv(1.0 - x);
+        }
+
+        inline double normal_quantile(double p) {
+            static const double ROOT_TWO = std::sqrt(2.0);
+
+            double result = 0.0;
+            assert(p >= 0 && p <= 1);
+            if (p < 0 || p > 1) {
+                return result;
+            }
+
+            result = -erfc_inv(2.0 * p);
+            // result *= normal distribution standard deviation (1.0) * sqrt(2)
+            result *= /*sd * */ ROOT_TWO;
+            // result += normal disttribution mean (0)
+            return result;
+        }
+
         template <typename Iterator, typename Estimator>
         estimate<double> bootstrap(double confidence_level, Iterator first, Iterator last, sample const& resample, Estimator&& estimator) {
-            namespace bm = boost::math;
-
             auto n_samples = last - first;
 
             double point = estimator(first, last);
@@ -1856,10 +2084,11 @@ namespace nonius {
             // degenerate case with uniform samples
             if(prob_n == 0) return { point, point, point, confidence_level };
 
-            double bias = bm::quantile(bm::normal{}, prob_n);
-            double z1 = bm::quantile(bm::normal{}, (1. - confidence_level) / 2.);
+            double bias = normal_quantile(prob_n);
+            double z1 = normal_quantile((1. - confidence_level) / 2.);
 
-            auto cumn = [n](double x) -> int { return std::lround(bm::cdf(bm::normal{}, x) * n); };
+            auto cumn = [n](double x) -> int {
+                return std::lround(normal_cdf(x) * n); };
             auto a = [bias, accel](double b) { return bias + b / (1. - accel * b); };
             double b1 = bias + z1;
             double b2 = bias - z1;
@@ -2623,12 +2852,93 @@ namespace nonius {
 #include <map>
 #include <memory>
 #include <unordered_map>
-#include <boost/lexical_cast.hpp>
 
 #include <ostream>
 
 #include <sstream>
-#include <boost/algorithm/string.hpp>
+
+// #included from: detail/string_utils.h++
+// Nonius - C++ benchmarking tool
+//
+// Written in 2014- by the nonius contributors <nonius@rmf.io>
+//
+// To the extent possible under law, the author(s) have dedicated all copyright and related
+// and neighboring rights to this software to the public domain worldwide. This software is
+// distributed without any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>
+
+// String processing utilities
+
+#define NONIUS_STRING_UTILS_HPP
+
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <vector>
+
+namespace nonius {
+    namespace detail {
+    struct is_spaceF {
+        bool operator()(const char c) const {
+            return std::isspace(c) != 0;
+        }
+    };
+
+    struct is_any_ofF {
+        std::string chars;
+        is_any_ofF(std::string chars) : chars(chars) {}
+        bool operator()(const char c) const {
+            return chars.find_first_of(c) != std::string::npos;
+        }
+    };
+    } // namespace detail
+
+    detail::is_spaceF is_space() { return detail::is_spaceF {}; }
+
+    detail::is_any_ofF is_any_of(const char* chars) { return detail::is_any_ofF{chars}; }
+
+    bool starts_with(std::string const& input, std::string const& test) {
+        if (test.size() <= input.size()) {
+            return std::equal(test.begin(), test.end(), input.begin());
+        }
+        return false;
+    }
+
+    template <typename PredicateT>
+    std::string trim_copy_if(std::string const& input, PredicateT predicate) {
+        const auto begin = std::find_if_not(input.begin(), input.end(), predicate);
+        const auto end = std::find_if(begin, input.end(), predicate);
+        return std::string(begin, end);
+    }
+
+    std::string trim_copy(std::string const& input) {
+        return trim_copy_if(input, is_space());
+    }
+
+    template <typename PredicateT>
+    std::vector<std::string>& split(std::vector<std::string>& result, std::string const& input, PredicateT predicate) {
+        std::vector<std::string> tmp;
+
+        const auto end = input.end();
+        auto itr = input.begin();
+
+        for (;;) {
+            auto sep = std::find_if(itr, end, predicate);
+            if (sep == end) {
+                break;
+            }
+            tmp.emplace_back(itr, sep);
+            itr = std::find_if_not(sep, end, predicate);
+        }
+        tmp.emplace_back(itr, end);
+        std::swap(result, tmp);
+
+        return result;
+    }
+
+} // namespace nonius
 
 namespace cpptempl
 {
@@ -2678,7 +2988,10 @@ namespace cpptempl
     template<> void data_ptr::operator = (const data_map& data);
     template<typename T>
     void data_ptr::operator = (const T& data) {
-        std::string data_str = boost::lexical_cast<std::string>(data);
+        std::stringstream ss;
+        ss << data;
+        ss.exceptions(std::ios::failbit);
+        std::string data_str = ss.str();
         this->operator =(data_str);
     }
 
@@ -2939,7 +3252,7 @@ namespace cpptempl
         // quoted string
         if (key[0] == '\"')
         {
-			return make_data(boost::trim_copy_if(key, [](char c){ return c == '"'; }));
+            return make_data(nonius::trim_copy_if(key, [](char c){ return c == '"'; }));
         }
         // check for dotted notation, i.e [foo.bar]
         size_t index = key.find(".") ;
@@ -3002,7 +3315,7 @@ namespace cpptempl
     inline TokenFor::TokenFor(std::string expr)
     {
         std::vector<std::string> elements ;
-        boost::split(elements, expr, boost::is_space()) ;
+        nonius::split(elements, expr, nonius::is_space()) ;
         if (elements.size() != 4u)
         {
             throw TemplateException("Invalid syntax in for statement") ;
@@ -3023,8 +3336,8 @@ namespace cpptempl
         for (size_t i = 0 ; i < items.size() ; ++i)
         {
             data_map loop ;
-            loop["index"] = make_data(boost::lexical_cast<std::string>(i+1)) ;
-            loop["index0"] = make_data(boost::lexical_cast<std::string>(i)) ;
+            loop["index"] = make_data(std::to_string(i+1)) ;
+            loop["index0"] = make_data(std::to_string(i)) ;
             data["loop"] = make_data(loop);
             data[m_val] = items[i] ;
             for(size_t j = 0 ; j < m_children.size() ; ++j)
@@ -3064,7 +3377,7 @@ namespace cpptempl
     inline bool TokenIf::is_true( std::string expr, data_map &data )
     {
         std::vector<std::string> elements ;
-        boost::split(elements, expr, boost::is_space()) ;
+        nonius::split(elements, expr, nonius::is_space()) ;
 
         if (elements[1] == "not")
         {
@@ -3189,19 +3502,19 @@ namespace cpptempl
                 pos = text.find("}") ;
                 if (pos != std::string::npos)
                 {
-                    std::string expression = boost::trim_copy(text.substr(1, pos-2)) ;
+                    std::string expression = nonius::trim_copy(text.substr(1, pos-2)) ;
                     text = text.substr(pos+1) ;
-                    if (boost::starts_with(expression, "for"))
+                    if (nonius::starts_with(expression, "for"))
                     {
                         tokens.push_back(token_ptr (new TokenFor(expression))) ;
                     }
-                    else if (boost::starts_with(expression, "if"))
+                    else if (nonius::starts_with(expression, "if"))
                     {
                         tokens.push_back(token_ptr (new TokenIf(expression))) ;
                     }
                     else
                     {
-                        tokens.push_back(token_ptr (new TokenEnd(boost::trim_copy(expression)))) ;
+                        tokens.push_back(token_ptr (new TokenEnd(nonius::trim_copy(expression)))) ;
                     }
                 }
             }
@@ -3334,6 +3647,7 @@ namespace nonius {
 ".select select {\n"
 "    outline: none;\n"
 "    -webkit-appearance: none;\n"
+"    -moz-appearance: none;\n"
 "    display: block;\n"
 "    padding: 0 3em 0 1.5em;\n"
 "    margin: 0.3em;\n"
@@ -4032,8 +4346,6 @@ namespace nonius {
     } // namespace detail
 } // namespace nonius
 
-#include <boost/algorithm/string.hpp>
-
 #include <vector>
 #include <string>
 #include <stdexcept>
@@ -4066,7 +4378,7 @@ namespace nonius {
         struct parser<param_configuration> {
             static param_configuration parse(std::string const& param) {
                 auto v = std::vector<std::string>{};
-                boost::split(v, param, boost::is_any_of(":"));
+                split(v, param, is_any_of(":"));
                 try {
                     if (v.size() > 0) {
                         auto name = v[0];
@@ -4077,12 +4389,14 @@ namespace nonius {
                             auto oper  = v[1];
                             auto init  = def.parse(v[2]);
                             auto step  = def.parse(v[3]);
-                            auto count = boost::lexical_cast<std::size_t>(v[4]);
+                            std::stringstream ss(v[4]);
+                            auto count = size_t();
+                            ss >> count;
+                            ss.exceptions(std::ios::failbit);
                             return {{}, run_configuration{name, oper, init, step, count}};
                         }
                     }
                 }
-                catch (boost::bad_lexical_cast const&) {}
                 catch (std::out_of_range const&) {}
                 return {};
             }
