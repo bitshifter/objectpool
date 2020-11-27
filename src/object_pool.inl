@@ -33,7 +33,8 @@ ObjectPoolBlock<T>* ObjectPoolBlock<T>::create(index_t entries_per_block)
     const size_t entry_align = alignof(T);
 #endif
     // extend indices size by alignment of T
-    const size_t indices_size = align_to(sizeof(index_t) * entries_per_block, entry_align);
+    // const size_t indices_size = align_to(sizeof(index_t) * entries_per_block, entry_align);
+    const size_t indices_size = align_to(sizeof(index_t) * entries_per_block, sizeof(index_t));
     // align block to cache line size, or entry alignment if larger
     const size_t entries_size = sizeof(T) * entries_per_block;
     // block size includes indices + entry alignment + entries
