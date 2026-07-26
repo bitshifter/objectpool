@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.10)
 
 project(OBJECT_POOL)
 
@@ -31,11 +31,8 @@ target_link_libraries(bench PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 target_include_directories(bench PRIVATE src thirdparty/nonius)
 
 # compare performance against boost object_pool if available
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_STATIC_RUNTIME ON)
-find_package(Boost COMPONENTS system)
+find_package(Boost CONFIG COMPONENTS system)
 if(Boost_FOUND)
 	target_compile_definitions(bench PRIVATE -DBENCH_BOOST_POOL)
-	target_include_directories(bench PRIVATE ${Boost_INCLUDE_DIRS})
-	target_link_libraries(bench PRIVATE ${Boost_LIBRARIES})
+	target_link_libraries(bench PRIVATE Boost::system)
 endif()
