@@ -1,6 +1,8 @@
 #define NONIUS_RUNNER
 #include "nonius.hpp"
 
+#include <cstring>
+
 #include "object_pool.hpp"
 
 #ifdef BENCH_BOOST_POOL

@@ -21,14 +21,15 @@ set(CPPHDRS
 	)
 
 add_executable(tests ${CPPHDRS} ${CPPSRCS} test/main.cpp)
-target_include_directories(tests PRIVATE thirdparty/Catch)
+target_include_directories(tests SYSTEM PRIVATE thirdparty/Catch)
 target_compile_definitions(tests PRIVATE -DUNIT_TESTS)
 set_target_properties(tests PROPERTIES OUTPUT_NAME test)
 
 find_package(Threads REQUIRED)
 add_executable(bench ${CPPHDRS} ${CPPSRCS} bench/main.cpp)
 target_link_libraries(bench PRIVATE ${CMAKE_THREAD_LIBS_INIT})
-target_include_directories(bench PRIVATE src thirdparty/nonius)
+target_include_directories(bench PRIVATE src)
+target_include_directories(bench SYSTEM PRIVATE thirdparty/nonius)
 
 # compare performance against boost object_pool if available
 find_package(Boost CONFIG COMPONENTS system)
